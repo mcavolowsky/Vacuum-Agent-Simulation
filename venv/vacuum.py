@@ -7,6 +7,8 @@ http://aima.cs.berkeley.edu/python/agents.py
 '''
 
 
+import inspect
+
 
 '''Implement Agents and Environments (Chapters 1-2).
 
@@ -42,7 +44,7 @@ class Object:
     This represents any physical object that can appear in an Environment. You subclass Object to get the objects you
     want.  Each object can have a  .__name__  slot (used for output only).'''
 
-    # Mark: __repr__ exists to create a printable output of an object (in this case, name)
+   # Mark: __repr__ exists to create a printable output of an object (in this case, name)
     def __repr__(self):
         return '<%s>' % getattr(self, '__name__', self.__class__.__name__)
 
@@ -53,6 +55,15 @@ class Object:
     def display(self, canvas, x, y, width, height):
         '''Display an image of this Object on the canvas.'''
         pass
+
+    # is_grabbable()
+    def is_grabbable(self, obj):
+        return False
+
+    # can the object be passed over, or does it occupy space.
+    blocker = False
+
+objInspect = inspect.getmembers(Object)
 
 class Agent(Object):
     '''
@@ -71,6 +82,9 @@ class Agent(Object):
 
         self.program = program
         self.alive = True
+    blocker = True
+
+if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
 
 def TraceAgent(agent):
     '''
@@ -87,6 +101,7 @@ def TraceAgent(agent):
     agent.program = new_program
     return agent
 
+if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
 #______________________________________________________________________________________________________________________
 
 class TableDrivenAgent(Agent):
@@ -108,6 +123,7 @@ class TableDrivenAgent(Agent):
         self.program = program
 
 
+if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
 class RandomAgent(Agent):
     "An agent that chooses an action at random, ignoring all percepts."
     def __init__(self, actions):
@@ -122,6 +138,7 @@ class RandomAgent(Agent):
 loc_A, loc_B = (0, 0), (1, 0) # The two locations for the Vacuum world
 
 
+if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
 class ReflexVacuumAgent(Agent):
     "A reflex agent for the two-state vacuum environment. [Fig. 2.8]"
 
@@ -134,11 +151,13 @@ class ReflexVacuumAgent(Agent):
         self.program = program
 
 
+if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
 # generator - the inputs to the RandomAgent class can be altered to add or remove behaviors
 def RandomVacuumAgent():
     "Randomly choose one of the actions from the vaccum environment."
     return RandomAgent(['Right', 'Left', 'Suck', 'NoOp'])
 
+if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
 def TableDrivenVacuumAgent():
     "[Fig. 2.3]"
     # generators - change the dictionary of state-action pairings to create new behaviors
@@ -155,6 +174,7 @@ def TableDrivenVacuumAgent():
              }
     return TableDrivenAgent(table)
 
+if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
 class ModelBasedVacuumAgent(Agent):
     "An agent that keeps track of what locations are clean or dirty."
     def __init__(self):
@@ -170,6 +190,7 @@ class ModelBasedVacuumAgent(Agent):
         self.program = program
 #______________________________________________________________________________
 
+if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
 class Environment:
     """
     Abstract class representing an Environment.  'Real' Environment classes inherit from this. Your Environment will
@@ -244,6 +265,7 @@ class Environment:
             self.agents.append(object)
         return self
 
+if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
 class XYEnvironment(Environment):
     '''This class is for environments on a 2D plane, with locations
     labelled by (x, y) points, either discrete or continuous.  Agents
@@ -272,9 +294,9 @@ class XYEnvironment(Environment):
 
     def execute_action(self, agent, action):
         if action == 'TurnRight':
-            agent.heading = turn_heading(agent.heading, -1)
+            agent.heading = self.turn_heading(agent.heading, -1)
         elif action == 'TurnLeft':
-            agent.heading = turn_heading(agent.heading, +1)
+            agent.heading = self.turn_heading(agent.heading, +1)
         elif action == 'Forward':
             self.move_to(agent, vector_add(agent.heading, agent.location))
         elif action == 'Grab':
@@ -294,16 +316,24 @@ class XYEnvironment(Environment):
     def default_location(self, object):
         return (random.choice(self.width), random.choice(self.height))
 
-    def move_to(object, destination):
-        # not used?
+    def move_to(self, object, destination):
         "Move an object to a new location."
-        object.location = destination  # Mark Code
+
+        obstacles = [os for os in self.objects_at(destination) if os.blocker]
+        if not obstacles:
+            object.location = destination
+
 
     def add_object(self, object, location=(1, 1)):
         Environment.add_object(self, object, location)
         object.holding = []
         object.held = None
         self.objects.append(object)
+
+    def add_agent(self, agent, location=(1,1)):
+        agent.bump = False
+        self.add_object(agent, location)
+
 
     def add_walls(self):
         "Put walls around the entire perimeter of the grid."
@@ -314,14 +344,15 @@ class XYEnvironment(Environment):
             self.add_object(Wall(), (0, y))
             self.add_object(Wall(), (self.width-1, y))
 
-def turn_heading(self, heading, inc,
+    def turn_heading(self, heading, inc,
                  headings=[(1, 0), (0, 1), (-1, 0), (0, -1)]):
-    "Return the heading to the left (inc=+1) or right (inc=-1) in headings."
-    return headings[(headings.index(heading) + inc) % len(headings)]
+        "Return the heading to the left (inc=+1) or right (inc=-1) in headings."
+        return headings[(headings.index(heading) + inc) % len(headings)]
 
 #______________________________________________________________________________
 ## Vacuum environment
 
+if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
 class TrivialVacuumEnvironment(Environment):
     '''This environment has two locations, A and B. Each can be Dirty or Clean.
     The agent perceives its location and the location's status. This serves as
@@ -354,9 +385,22 @@ class TrivialVacuumEnvironment(Environment):
         "Agents start in either location at random."
         return random.choice([loc_A, loc_B])
 
-class Dirt(Object): pass
-class Wall(Object): pass
+if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
+class Dirt(Object):
+    def __init__(self):
+        pass
 
+    def is_grabbable(self, obj):
+        if hasattr(obj, holding):
+            return True
+        else:
+            return False
+
+if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
+class Wall(Object):
+    blocker = True
+
+if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
 class VacuumEnvironment(XYEnvironment):
     '''The environment of [Ex. 2.12]. Agent perceives dirty or clean,
     and bump (into obstacle) or not; 2D discrete world of unknown size;
@@ -383,8 +427,22 @@ class VacuumEnvironment(XYEnvironment):
         agent.performance -= 1
         XYEnvironment.execute_action(self, agent, action)
 
+    def find_at(self, obj, loc):
+        return [d for d in self.objects_at(loc) if isinstance(obj, Dirt)]
 #______________________________________________________________________________
 
+if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
+class RandomXYVacuumAgent(Agent):
+    "An agent that chooses an action at random, ignoring all percepts."
+
+    def __init__(self, actions):
+        Agent.__init__(self)
+        self.program = lambda percept: random.choice(actions)
+
+    holding = []
+    heading = (1, 0)
+
+if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
 class SimpleReflexAgent(Agent):
     '''This agent takes action based solely on the percept. [Fig. 2.13]'''
 
@@ -397,6 +455,7 @@ class SimpleReflexAgent(Agent):
             return action
         self.program = program
 
+if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
 class ReflexAgentWithState(Agent):
     '''This agent takes action based on the percept and state. [Fig. 2.16]'''
 
@@ -410,29 +469,16 @@ class ReflexAgentWithState(Agent):
             return action
         self.program = program
 
-def SimpleReflexVacuumAgent():
+if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
+def NewRandomXYVacuumAgent():
     "Randomly choose one of the actions from the vaccum environment."
-    return SimpleReflexAgent(['Right', 'Left', 'Suck', 'NoOp'])
+    return RandomXYVacuumAgent(['TurnRight', 'TurnLeft', 'Forward', 'Grab', 'Release'])
 
-#______________________________________________________________________________
-## The Wumpus World
-
-class Gold(Object): pass
-class Pit(Object): pass
-class Arrow(Object): pass
-class Wumpus(Agent): pass
-class Explorer(Agent): pass
-
-class WumpusEnvironment(XYEnvironment):
-    object_classes = [Wall, Gold, Pit, Arrow, Wumpus, Explorer]
-    def __init__(self, width=10, height=10):
-        XYEnvironment.__init__(self, width, height)
-        self.add_walls()
-    ## Needs a lot of work ...
 
 
 #______________________________________________________________________________
 
+if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
 def compare_agents(EnvFactory, AgentFactories, n=10, steps=1000):
     '''See how well each of several agents do in n instances of an environment.
     Pass in a factory (constructor) for environments, and several for agents.
@@ -537,7 +583,12 @@ class EnvFrame(tk.Frame):
 def test1():
 
     e = VacuumEnvironment()
-    e.add_object(TraceAgent(ModelBasedVacuumAgent()))
-    e.run(5)
+    e.add_agent(TraceAgent(NewRandomXYVacuumAgent()))
+    e.run(100)
+    ef = EnvFrame(e)
 
-test1()
+#test1()
+
+if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
+
+print(inspect.getmembers(Object))
