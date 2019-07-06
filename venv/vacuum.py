@@ -6,8 +6,9 @@ http://aima.cs.berkeley.edu/python/agents.html
 http://aima.cs.berkeley.edu/python/agents.py
 '''
 
-
+import Tkinter as tk
 import inspect
+from PIL import Image, ImageTk
 
 
 '''Implement Agents and Environments (Chapters 1-2).
@@ -62,8 +63,9 @@ class Object:
 
     # can the object be passed over, or does it occupy space.
     blocker = False
+    image_source = ''
+    image = None
 
-objInspect = inspect.getmembers(Object)
 
 class Agent(Object):
     '''
@@ -83,8 +85,9 @@ class Agent(Object):
         self.program = program
         self.alive = True
     blocker = True
+    image_source = 'robot'
 
-if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
+
 
 def TraceAgent(agent):
     '''
@@ -101,7 +104,7 @@ def TraceAgent(agent):
     agent.program = new_program
     return agent
 
-if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
+
 #______________________________________________________________________________________________________________________
 
 class TableDrivenAgent(Agent):
@@ -123,7 +126,7 @@ class TableDrivenAgent(Agent):
         self.program = program
 
 
-if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
+
 class RandomAgent(Agent):
     "An agent that chooses an action at random, ignoring all percepts."
     def __init__(self, actions):
@@ -138,7 +141,7 @@ class RandomAgent(Agent):
 loc_A, loc_B = (0, 0), (1, 0) # The two locations for the Vacuum world
 
 
-if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
+
 class ReflexVacuumAgent(Agent):
     "A reflex agent for the two-state vacuum environment. [Fig. 2.8]"
 
@@ -151,13 +154,13 @@ class ReflexVacuumAgent(Agent):
         self.program = program
 
 
-if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
+
 # generator - the inputs to the RandomAgent class can be altered to add or remove behaviors
 def RandomVacuumAgent():
     "Randomly choose one of the actions from the vaccum environment."
     return RandomAgent(['Right', 'Left', 'Suck', 'NoOp'])
 
-if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
+
 def TableDrivenVacuumAgent():
     "[Fig. 2.3]"
     # generators - change the dictionary of state-action pairings to create new behaviors
@@ -174,7 +177,7 @@ def TableDrivenVacuumAgent():
              }
     return TableDrivenAgent(table)
 
-if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
+
 class ModelBasedVacuumAgent(Agent):
     "An agent that keeps track of what locations are clean or dirty."
     def __init__(self):
@@ -190,7 +193,7 @@ class ModelBasedVacuumAgent(Agent):
         self.program = program
 #______________________________________________________________________________
 
-if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
+
 class Environment:
     """
     Abstract class representing an Environment.  'Real' Environment classes inherit from this. Your Environment will
@@ -265,7 +268,7 @@ class Environment:
             self.agents.append(object)
         return self
 
-if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
+
 class XYEnvironment(Environment):
     '''This class is for environments on a 2D plane, with locations
     labelled by (x, y) points, either discrete or continuous.  Agents
@@ -301,7 +304,7 @@ class XYEnvironment(Environment):
             self.move_to(agent, vector_add(agent.heading, agent.location))
         elif action == 'Grab':
             objs = [obj for obj in self.objects_at(agent.location)
-                    if obj.is_grabable(agent)]
+                if (obj != agent and obj.is_grabbable(agent))]
             if objs:
                 agent.holding.append(objs[0])
         elif action == 'Release':
@@ -352,7 +355,7 @@ class XYEnvironment(Environment):
 #______________________________________________________________________________
 ## Vacuum environment
 
-if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
+
 class TrivialVacuumEnvironment(Environment):
     '''This environment has two locations, A and B. Each can be Dirty or Clean.
     The agent perceives its location and the location's status. This serves as
@@ -385,7 +388,7 @@ class TrivialVacuumEnvironment(Environment):
         "Agents start in either location at random."
         return random.choice([loc_A, loc_B])
 
-if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
+
 class Dirt(Object):
     def __init__(self):
         pass
@@ -396,11 +399,12 @@ class Dirt(Object):
         else:
             return False
 
-if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
+    image_source = 'dirt'
+
 class Wall(Object):
     blocker = True
 
-if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
+
 class VacuumEnvironment(XYEnvironment):
     '''The environment of [Ex. 2.12]. Agent perceives dirty or clean,
     and bump (into obstacle) or not; 2D discrete world of unknown size;
@@ -431,7 +435,7 @@ class VacuumEnvironment(XYEnvironment):
         return [d for d in self.objects_at(loc) if isinstance(obj, Dirt)]
 #______________________________________________________________________________
 
-if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
+
 class RandomXYVacuumAgent(Agent):
     "An agent that chooses an action at random, ignoring all percepts."
 
@@ -442,7 +446,7 @@ class RandomXYVacuumAgent(Agent):
     holding = []
     heading = (1, 0)
 
-if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
+
 class SimpleReflexAgent(Agent):
     '''This agent takes action based solely on the percept. [Fig. 2.13]'''
 
@@ -455,7 +459,7 @@ class SimpleReflexAgent(Agent):
             return action
         self.program = program
 
-if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
+
 class ReflexAgentWithState(Agent):
     '''This agent takes action based on the percept and state. [Fig. 2.16]'''
 
@@ -469,7 +473,7 @@ class ReflexAgentWithState(Agent):
             return action
         self.program = program
 
-if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
+
 def NewRandomXYVacuumAgent():
     "Randomly choose one of the actions from the vaccum environment."
     return RandomXYVacuumAgent(['TurnRight', 'TurnLeft', 'Forward', 'Grab', 'Release'])
@@ -478,7 +482,7 @@ def NewRandomXYVacuumAgent():
 
 #______________________________________________________________________________
 
-if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
+
 def compare_agents(EnvFactory, AgentFactories, n=10, steps=1000):
     '''See how well each of several agents do in n instances of an environment.
     Pass in a factory (constructor) for environments, and several for agents.
@@ -501,9 +505,6 @@ def test_agent(AgentFactory, steps, envs):
 #______________________________________________________________________________
 
 
-import Tkinter as tk
-
-
 class EnvFrame(tk.Frame):
     def __init__(self, env, title='AIMA GUI', cellwidth=50, n=10):
         update(self, cellwidth=cellwidth, running=False, delay=1.0)
@@ -511,6 +512,7 @@ class EnvFrame(tk.Frame):
         self.running = 0
         self.delay = 1.0
         self.env = env
+        self.cellwidth = cellwidth
         tk.Frame.__init__(self, None, width=(cellwidth + 2) * n, height=(cellwidth + 2) * n)
         # self.title(title)
         # Toolbar
@@ -537,10 +539,13 @@ class EnvFrame(tk.Frame):
                 c.create_line(i * cellwidth, 0, i * cellwidth, n * cellwidth)
                 c.pack(expand=1, fill='both')
         self.pack()
+        self.images = {'robot':tk.PhotoImage(file='img/robot (40x40).gif'), 'dirt':tk.PhotoImage(file='img/dirt (40x19).gif')}
 
     def background_run(self):
         if self.running:
             self.env.step()
+#            for obj in self.env.objects:
+#                c.create_image()
             ms = int(1000 * max(float(self.delay), 0.5))
             self.after(ms, self.background_run)
 
@@ -560,7 +565,7 @@ class EnvFrame(tk.Frame):
         '''Choose an object within radius and edit its fields.'''
         pass
 
-    def add_object(self, event):
+    def add_object_gui(self, event):
         ## This is supposed to pop up a menu of Object classes; you choose the one
         ## You want to put in this square.  Not working yet.
         menu = tk.Menu(self, title='Edit (%d, %d)' % (event.x / 50, event.y / 50))
@@ -574,6 +579,14 @@ class EnvFrame(tk.Frame):
         # self.images.append(image)
         # c.create_image(200,200,anchor=NW,image=image)
 
+    def add_object(self, object, location=(0, 0)):
+        if isinstance(object, Agent):
+            self.env.add_agent(object, location)
+        else:
+            self.env.add_object(object, location)
+        if hasattr(object, 'location'):
+            print(object.location)
+            object.image = self.canvas.create_image((object.location[0]+0.5)*self.cellwidth, (object.location[1]+0.5)*self.cellwidth, image=self.images[object.image_source])
 
 # v = VacuumEnvironment(); w = EnvFrame(v);
 
@@ -583,12 +596,10 @@ class EnvFrame(tk.Frame):
 def test1():
 
     e = VacuumEnvironment()
-    e.add_agent(TraceAgent(NewRandomXYVacuumAgent()))
-    e.run(100)
     ef = EnvFrame(e)
+    ef.add_object(TraceAgent(NewRandomXYVacuumAgent()))
 
-#test1()
+    ef.run()
+    ef.mainloop()
 
-if (objInspect != inspect.getmembers(Object)): print(inspect.getmembers(Object))
-
-print(inspect.getmembers(Object))
+test1()
