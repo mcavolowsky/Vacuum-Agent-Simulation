@@ -476,7 +476,8 @@ class ReflexAgentWithState(Agent):
 
 def NewRandomXYVacuumAgent():
     "Randomly choose one of the actions from the vaccum environment."
-    return RandomXYVacuumAgent(['TurnRight', 'TurnLeft', 'Forward', 'Grab', 'Release'])
+    return RandomXYVacuumAgent(['TurnRight', 'TurnLeft', 'Forward', 'Forward', 'Forward'])
+    #return RandomXYVacuumAgent(['TurnRight', 'TurnLeft', 'Forward', 'Grab', 'Release'])
 
 
 
@@ -544,8 +545,9 @@ class EnvFrame(tk.Frame):
     def background_run(self):
         if self.running:
             self.env.step()
-#            for obj in self.env.objects:
-#                c.create_image()
+
+            self.update_display()
+
             ms = int(1000 * max(float(self.delay), 0.5))
             self.after(ms, self.background_run)
 
@@ -579,7 +581,7 @@ class EnvFrame(tk.Frame):
         # self.images.append(image)
         # c.create_image(200,200,anchor=NW,image=image)
 
-    def add_object(self, object, location=(0, 0)):
+    def add_object(self, object, location=(1, 1)):
         if isinstance(object, Agent):
             self.env.add_agent(object, location)
         else:
@@ -588,6 +590,11 @@ class EnvFrame(tk.Frame):
             print(object.location)
             object.image = self.canvas.create_image((object.location[0]+0.5)*self.cellwidth, (object.location[1]+0.5)*self.cellwidth, image=self.images[object.image_source])
 
+    def update_display(self):
+        for obj in self.env.objects:
+            if obj.image:
+                old_loc = self.canvas.coords(obj.image)
+                self.canvas.move(obj.image, (obj.location[0]+0.5)*self.cellwidth-old_loc[0], (obj.location[1]+0.5)*self.cellwidth-old_loc[1])
 # v = VacuumEnvironment(); w = EnvFrame(v);
 
 #______________________________________________________________________________
@@ -598,6 +605,11 @@ def test1():
     e = VacuumEnvironment()
     ef = EnvFrame(e)
     ef.add_object(TraceAgent(NewRandomXYVacuumAgent()))
+
+    i=0
+    for o in e.objects:
+        i+=1
+        print(i)
 
     ef.run()
     ef.mainloop()
