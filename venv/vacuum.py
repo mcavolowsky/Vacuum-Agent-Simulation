@@ -101,7 +101,6 @@ def TraceAgent(agent):
     def new_program(percept):
         action = old_program(percept)
         print('%s perceives %s and does %s' % (agent, percept, action))
-        print(agent.heading)
         return action
     agent.program = new_program
     return agent
@@ -302,17 +301,18 @@ class XYEnvironment(Environment):
     def execute_action(self, agent, action):
         if action == 'TurnRight':
             agent.heading = self.turn_heading(agent.heading, -1)
-            #agent.image =
         elif action == 'TurnLeft':
             agent.heading = self.turn_heading(agent.heading, +1)
-            #agent.image =
         elif action == 'Forward':
             self.move_to(agent, vector_add(agent.heading, agent.location))
         elif action == 'Grab':
             objs = [obj for obj in self.objects_at(agent.location)
                 if (obj != agent and obj.is_grabbable(agent))]
             if objs:
-                agent.holding.append(objs[0])
+                agent.holding.append(objs)
+                for o in objs:
+                    o.location = agent
+
         elif action == 'Release':
             if agent.holding:
                 agent.holding.pop()
@@ -341,7 +341,6 @@ class XYEnvironment(Environment):
     def add_agent(self, agent, location=(1,1)):
         agent.bump = False
         self.add_object(agent, location)
-
 
     def add_walls(self):
         "Put walls around the entire perimeter of the grid."
@@ -399,7 +398,7 @@ class Dirt(Object):
         pass
 
     def is_grabbable(self, obj):
-        if hasattr(obj, holding):
+        if hasattr(obj, 'holding'):
             return True
         else:
             return False
@@ -447,19 +446,19 @@ class VacuumEnvironment(XYEnvironment):
 
 #______________________________________________________________________________
 
+class XYAgent(Agent):
+    holding = []
+    heading = (1, 0)
 
-class RandomXYVacuumAgent(Agent):
+
+class RandomXYAgent(XYAgent):
     "An agent that chooses an action at random, ignoring all percepts."
 
     def __init__(self, actions):
         Agent.__init__(self)
         self.program = lambda percept: random.choice(actions)
 
-    holding = []
-    heading = (1, 0)
-
-
-class SimpleReflexAgent(Agent):
+class SimpleReflexAgent(XYAgent):
     '''This agent takes action based solely on the percept. [Fig. 2.13]'''
 
     def __init__(self, rules, interpret_input):
@@ -472,7 +471,22 @@ class SimpleReflexAgent(Agent):
         self.program = program
 
 
-class ReflexAgentWithState(Agent):
+class RandomReflexAgent(XYAgent):
+    '''This agent takes action based solely on the percept. [Fig. 2.13]'''
+
+    def __init__(self, actions):
+        Agent.__init__(self)
+        self.actions = actions
+
+        def program(percept):
+            if percept[0] == 'Dirty':
+                return "Grab"
+            else:
+                return random.choice(actions)
+        self.program = program
+
+
+class ReflexAgentWithState(XYAgent):
     '''This agent takes action based on the percept and state. [Fig. 2.16]'''
 
     def __init__(self, rules, udpate_state):
@@ -486,12 +500,16 @@ class ReflexAgentWithState(Agent):
         self.program = program
 
 
-def NewRandomXYVacuumAgent():
+def NewRandomXYAgent():
     "Randomly choose one of the actions from the vaccum environment."
     # the extra forwards are just to alter the probabilities
-    return RandomXYVacuumAgent(['TurnRight', 'TurnLeft', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward'])
-    #return RandomXYVacuumAgent(['TurnRight', 'TurnLeft', 'Forward', 'Grab', 'Release'])
+    return RandomXYAgent(['TurnRight', 'TurnLeft', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward'])
+    #return RandomXYAgent(['TurnRight', 'TurnLeft', 'Forward', 'Grab', 'Release'])
 
+def NewRandomReflexAgent():
+    "If the cell is dirty, Grab the dirt; otherwise, randomly choose one of the actions from the vaccum environment."
+    # the extra forwards are just to alter the probabilities
+    return RandomReflexAgent(['TurnRight', 'TurnLeft', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward'])
 
 
 #______________________________________________________________________________
@@ -614,10 +632,13 @@ class EnvFrame(tk.Frame):
     def update_display(self):
         for obj in self.env.objects:
             if obj.image:
-                if hasattr(obj, 'heading'):
-                    self.canvas.itemconfig(obj.image, image=self.images[self.orientation[obj.heading]])
-                old_loc = self.canvas.coords(obj.image)
-                self.canvas.move(obj.image, (obj.location[0]+0.5)*self.cellwidth-old_loc[0], (obj.location[1]+0.5)*self.cellwidth-old_loc[1])
+                if isinstance(obj.location, tuple):
+                    if hasattr(obj, 'heading'):
+                        self.canvas.itemconfig(obj.image, image=self.images[self.orientation[obj.heading]])
+                    old_loc = self.canvas.coords(obj.image)
+                    self.canvas.move(obj.image, (obj.location[0]+0.5)*self.cellwidth-old_loc[0], (obj.location[1]+0.5)*self.cellwidth-old_loc[1])
+                elif isinstance(obj.location, Agent):
+                    self.canvas.itemconfig(obj.image, state='hidden')
             else:
                 obj.image = self.canvas.create_image((obj.location[0] + 0.5) * self.cellwidth,
                                                         (obj.location[1] + 0.5) * self.cellwidth,
@@ -631,7 +652,8 @@ def test1():
 
     e = VacuumEnvironment()
     ef = EnvFrame(e)
-    e.add_agent(TraceAgent(NewRandomXYVacuumAgent()),location=(5,5))
+    for i in range(1,9):
+        e.add_agent(TraceAgent(NewRandomReflexAgent()),location=(i,i))
 
     if False:
         for x in range(1,9):
