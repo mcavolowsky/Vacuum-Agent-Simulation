@@ -106,43 +106,6 @@ def TraceAgent(agent):
     return agent
 
 
-#______________________________________________________________________________________________________________________
-
-class TableDrivenAgent(Agent):
-    """
-    This agent selects an action based on the percept sequence. It is practical only for tiny domains.  To customize
-    it you provide a table to the constructor. [Fig. 2.7]
-    """
-
-    def __init__(self, table):
-        "Supply as table a dictionary of all {percept_sequence:action} pairs."
-        ## The agent program could in principle be a function, but because
-        ## it needs to store state, we make it a callable instance of a class.
-        Agent.__init__(self)
-        percepts = []
-        def program(percept):
-            percepts.append(percept)
-            action = table.get(tuple(percepts))
-            return action
-        self.program = program
-
-
-
-class RandomAgent(Agent):
-    "An agent that chooses an action at random, ignoring all percepts."
-    def __init__(self, actions):
-        Agent.__init__(self)
-        self.program = lambda percept: random.choice(actions)
-
-
-#______________________________________________________________________________________________________________________
-
-# Mark: The Vacuum world seems to be a linear world with two locations.
-#       This is here so the following Vacuum agents don't error
-loc_A, loc_B = (0, 0), (1, 0) # The two locations for the Vacuum world
-
-
-
 class ReflexVacuumAgent(Agent):
     "A reflex agent for the two-state vacuum environment. [Fig. 2.8]"
 
@@ -150,45 +113,6 @@ class ReflexVacuumAgent(Agent):
         Agent.__init__(self)
         def program((location, status)):
             if status == 'Dirty': return 'Suck'
-            elif location == loc_A: return 'Right'
-            elif location == loc_B: return 'Left'
-        self.program = program
-
-
-
-# generator - the inputs to the RandomAgent class can be altered to add or remove behaviors
-def RandomVacuumAgent():
-    "Randomly choose one of the actions from the vaccum environment."
-    return RandomAgent(['Right', 'Left', 'Suck', 'NoOp'])
-
-
-def TableDrivenVacuumAgent():
-    "[Fig. 2.3]"
-    # generators - change the dictionary of state-action pairings to create new behaviors
-    table = {((loc_A, 'Clean'),): 'Right',
-             ((loc_A, 'Dirty'),): 'Suck',
-             ((loc_B, 'Clean'),): 'Left',
-             ((loc_B, 'Dirty'),): 'Suck',
-             ((loc_A, 'Clean'), (loc_A, 'Clean')): 'Right',
-             ((loc_A, 'Clean'), (loc_A, 'Dirty')): 'Suck',
-             # ...
-             ((loc_A, 'Clean'), (loc_A, 'Clean'), (loc_A, 'Clean')): 'Right',
-             ((loc_A, 'Clean'), (loc_A, 'Clean'), (loc_A, 'Dirty')): 'Suck',
-             # ...
-             }
-    return TableDrivenAgent(table)
-
-
-class ModelBasedVacuumAgent(Agent):
-    "An agent that keeps track of what locations are clean or dirty."
-    def __init__(self):
-        Agent.__init__(self)
-        model = {loc_A: None, loc_B: None}
-        def program((location, status)):
-            "Same as ReflexVacuumAgent, except if everything is clean, do NoOp"
-            model[location] = status ## Update the model here
-            if model[loc_A] == model[loc_B] == 'Clean': return 'NoOp'
-            elif status == 'Dirty': return 'Suck'
             elif location == loc_A: return 'Right'
             elif location == loc_B: return 'Left'
         self.program = program
@@ -360,39 +284,6 @@ class XYEnvironment(Environment):
 ## Vacuum environment
 
 
-class TrivialVacuumEnvironment(Environment):
-    '''This environment has two locations, A and B. Each can be Dirty or Clean.
-    The agent perceives its location and the location's status. This serves as
-    an example of how to implement a simple Environment.'''
-
-    def __init__(self):
-        Environment.__init__(self)
-        self.status = {loc_A:random.choice(['Clean', 'Dirty']),
-                       loc_B:random.choice(['Clean', 'Dirty'])}
-
-    def percept(self, agent):
-        "Returns the agent's location, and the location status (Dirty/Clean)."
-        return (agent.location, self.status[agent.location])
-
-    def execute_action(self, agent, action):
-        '''Change agent's location and/or location's status; track performance.
-        Score 10 for each dirt cleaned; -1 for each move.'''
-        if action == 'Right':
-            agent.location = loc_B
-            agent.performance -= 1
-        elif action == 'Left':
-            agent.location = loc_A
-            agent.performance -= 1
-        elif action == 'Suck':
-            if self.status[agent.location] == 'Dirty':
-                agent.performance += 10
-            self.status[agent.location] = 'Clean'
-
-    def default_location(self, object):
-        "Agents start in either location at random."
-        return random.choice([loc_A, loc_B])
-
-
 class Dirt(Object):
     def __init__(self):
         pass
@@ -418,8 +309,7 @@ class VacuumEnvironment(XYEnvironment):
         XYEnvironment.__init__(self, width, height)
         self.add_walls()
 
-    object_classes = [Wall, Dirt, ReflexVacuumAgent, RandomVacuumAgent,
-                      TableDrivenVacuumAgent, ModelBasedVacuumAgent]
+    object_classes = []
 
     def percept(self, agent):
         '''The percept is a tuple of ('Dirty' or 'Clean', 'Bump' or 'None').
@@ -450,13 +340,18 @@ class XYAgent(Agent):
     holding = []
     heading = (1, 0)
 
-
 class RandomXYAgent(XYAgent):
     "An agent that chooses an action at random, ignoring all percepts."
 
     def __init__(self, actions):
         Agent.__init__(self)
         self.program = lambda percept: random.choice(actions)
+
+def NewRandomXYAgent():
+    "Randomly choose one of the actions from the vaccum environment."
+    # the extra forwards are just to alter the probabilities
+    return RandomXYAgent(['TurnRight', 'TurnLeft', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward'])
+    #return RandomXYAgent(['TurnRight', 'TurnLeft', 'Forward', 'Grab', 'Release'])
 
 class SimpleReflexAgent(XYAgent):
     '''This agent takes action based solely on the percept. [Fig. 2.13]'''
@@ -485,6 +380,10 @@ class RandomReflexAgent(XYAgent):
                 return random.choice(actions)
         self.program = program
 
+def NewRandomReflexAgent():
+    "If the cell is dirty, Grab the dirt; otherwise, randomly choose one of the actions from the vaccum environment."
+    # the extra forwards are just to alter the probabilities
+    return RandomReflexAgent(['TurnRight', 'TurnLeft', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward'])
 
 class ReflexAgentWithState(XYAgent):
     '''This agent takes action based on the percept and state. [Fig. 2.16]'''
@@ -498,19 +397,6 @@ class ReflexAgentWithState(XYAgent):
             action = rule.action
             return action
         self.program = program
-
-
-def NewRandomXYAgent():
-    "Randomly choose one of the actions from the vaccum environment."
-    # the extra forwards are just to alter the probabilities
-    return RandomXYAgent(['TurnRight', 'TurnLeft', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward'])
-    #return RandomXYAgent(['TurnRight', 'TurnLeft', 'Forward', 'Grab', 'Release'])
-
-def NewRandomReflexAgent():
-    "If the cell is dirty, Grab the dirt; otherwise, randomly choose one of the actions from the vaccum environment."
-    # the extra forwards are just to alter the probabilities
-    return RandomReflexAgent(['TurnRight', 'TurnLeft', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward'])
-
 
 #______________________________________________________________________________
 
@@ -606,20 +492,6 @@ class EnvFrame(tk.Frame):
     def edit_objects(self, event):
         '''Choose an object within radius and edit its fields.'''
         pass
-
-    def add_object_gui(self, event):
-        ## This is supposed to pop up a menu of Object classes; you choose the one
-        ## You want to put in this square.  Not working yet.
-        menu = tk.Menu(self, title='Edit (%d, %d)' % (event.x / 50, event.y / 50))
-        for (txt, cmd) in [('Wumpus', self.run), ('Pit', self.run)]:
-            menu.add_command(label=txt, command=cmd)
-        menu.tk_popup(event.x + self.winfo_rootx(),
-                      event.y + self.winfo_rooty())
-
-        # image=PhotoImage(file=r"C:\Documents and Settings\pnorvig\Desktop\wumpus.gif")
-        # self.images = []
-        # self.images.append(image)
-        # c.create_image(200,200,anchor=NW,image=image)
 
     def add_object(self, object, location=(1, 1)):
         if isinstance(object, Agent):
