@@ -8,7 +8,6 @@ http://aima.cs.berkeley.edu/python/agents.py
 
 import Tkinter as tk
 import inspect
-from PIL import Image, ImageTk
 import random as rnd
 
 
@@ -517,8 +516,6 @@ class EnvFrame(tk.Frame):
                                                         image=self.images[obj.image_source])
 
 #______________________________________________________________________________
-
-
 
 def test1():
 
