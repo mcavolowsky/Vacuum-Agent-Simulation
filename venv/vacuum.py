@@ -9,6 +9,7 @@ http://aima.cs.berkeley.edu/python/agents.py
 import Tkinter as tk
 import inspect
 from PIL import Image, ImageTk
+import random as rnd
 
 
 '''Implement Agents and Environments (Chapters 1-2).
@@ -85,7 +86,7 @@ class Agent(Object):
         self.program = program
         self.alive = True
     blocker = True
-    image_source = 'robot'
+    image_source = 'robot-right'
 
 
 
@@ -100,6 +101,7 @@ def TraceAgent(agent):
     def new_program(percept):
         action = old_program(percept)
         print('%s perceives %s and does %s' % (agent, percept, action))
+        print(agent.heading)
         return action
     agent.program = new_program
     return agent
@@ -277,6 +279,8 @@ class XYEnvironment(Environment):
     and a .holding slot, which should be a list of objects that are
     held '''
 
+    #robot_images = {(1,0):'img/robot-right.gif',(-1,0):'img/robot-left.gif',(0,-1):'img/robot-up.gif',(0,1):'img/robot-down.gif'}
+
     def __init__(self, width=10, height=10):
         update(self, objects=[], agents=[], width=width, height=height)
 
@@ -298,8 +302,10 @@ class XYEnvironment(Environment):
     def execute_action(self, agent, action):
         if action == 'TurnRight':
             agent.heading = self.turn_heading(agent.heading, -1)
+            #agent.image =
         elif action == 'TurnLeft':
             agent.heading = self.turn_heading(agent.heading, +1)
+            #agent.image =
         elif action == 'Forward':
             self.move_to(agent, vector_add(agent.heading, agent.location))
         elif action == 'Grab':
@@ -331,7 +337,6 @@ class XYEnvironment(Environment):
         Environment.add_object(self, object, location)
         object.holding = []
         object.held = None
-        self.objects.append(object)
 
     def add_agent(self, agent, location=(1,1)):
         agent.bump = False
@@ -431,8 +436,15 @@ class VacuumEnvironment(XYEnvironment):
         agent.performance -= 1
         XYEnvironment.execute_action(self, agent, action)
 
-    def find_at(self, obj, loc):
-        return [d for d in self.objects_at(loc) if isinstance(obj, Dirt)]
+    def find_at(self, cls, loc):
+        return [o for o in self.objects_at(loc) if isinstance(o, cls)]
+
+    def exogenous_change(self):
+        if rnd.uniform(0,1)<.9:
+            loc = (rnd.randrange(self.width), rnd.randrange(self.height))
+            if not (self.find_at(Dirt, loc) or self.find_at(Wall, loc)):
+                self.add_object(Dirt(), loc)
+
 #______________________________________________________________________________
 
 
@@ -476,7 +488,8 @@ class ReflexAgentWithState(Agent):
 
 def NewRandomXYVacuumAgent():
     "Randomly choose one of the actions from the vaccum environment."
-    return RandomXYVacuumAgent(['TurnRight', 'TurnLeft', 'Forward', 'Forward', 'Forward'])
+    # the extra forwards are just to alter the probabilities
+    return RandomXYVacuumAgent(['TurnRight', 'TurnLeft', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward'])
     #return RandomXYVacuumAgent(['TurnRight', 'TurnLeft', 'Forward', 'Grab', 'Release'])
 
 
@@ -519,7 +532,7 @@ class EnvFrame(tk.Frame):
         # Toolbar
         toolbar = tk.Frame(self, relief='raised', bd=2)
         toolbar.pack(side='top', fill='x')
-        for txt, cmd in [('Step >', self.env.step), ('Run >>', self.run),
+        for txt, cmd in [('Step >', self.next_step), ('Run >>', self.run),
                          ('Stop [ ]', self.stop)]:
             tk.Button(toolbar, text=txt, command=cmd).pack(side='left')
         tk.Label(toolbar, text='Delay').pack(side='left')
@@ -540,12 +553,17 @@ class EnvFrame(tk.Frame):
                 c.create_line(i * cellwidth, 0, i * cellwidth, n * cellwidth)
                 c.pack(expand=1, fill='both')
         self.pack()
-        self.images = {'robot':tk.PhotoImage(file='img/robot (40x40).gif'), 'dirt':tk.PhotoImage(file='img/dirt (40x19).gif')}
+        self.images = {'':None, 'robot-right':tk.PhotoImage(file='img/robot-right.gif'),
+                       'robot-left':tk.PhotoImage(file='img/robot-left.gif'),
+                       'robot-up':tk.PhotoImage(file='img/robot-up.gif'),
+                       'robot-down':tk.PhotoImage(file='img/robot-down.gif'),
+                       'dirt':tk.PhotoImage(file='img/dirt (40x19).gif')}
+        # note up and down are switched, since (0,0) is in the upper left
+        self.orientation = {(1,0): 'robot-right', (-1,0): 'robot-left', (0,-1): 'robot-up', (0,1): 'robot-down'}
 
     def background_run(self):
         if self.running:
             self.env.step()
-
             self.update_display()
 
             ms = int(1000 * max(float(self.delay), 0.5))
@@ -555,6 +573,10 @@ class EnvFrame(tk.Frame):
         print 'run'
         self.running = 1
         self.background_run()
+
+    def next_step(self):
+        self.env.step()
+        self.update_display()
 
     def stop(self):
         print 'stop'
@@ -587,29 +609,35 @@ class EnvFrame(tk.Frame):
         else:
             self.env.add_object(object, location)
         if hasattr(object, 'location'):
-            print(object.location)
             object.image = self.canvas.create_image((object.location[0]+0.5)*self.cellwidth, (object.location[1]+0.5)*self.cellwidth, image=self.images[object.image_source])
 
     def update_display(self):
         for obj in self.env.objects:
             if obj.image:
+                if hasattr(obj, 'heading'):
+                    self.canvas.itemconfig(obj.image, image=self.images[self.orientation[obj.heading]])
                 old_loc = self.canvas.coords(obj.image)
                 self.canvas.move(obj.image, (obj.location[0]+0.5)*self.cellwidth-old_loc[0], (obj.location[1]+0.5)*self.cellwidth-old_loc[1])
-# v = VacuumEnvironment(); w = EnvFrame(v);
+            else:
+                obj.image = self.canvas.create_image((obj.location[0] + 0.5) * self.cellwidth,
+                                                        (obj.location[1] + 0.5) * self.cellwidth,
+                                                        image=self.images[obj.image_source])
 
 #______________________________________________________________________________
+
 
 
 def test1():
 
     e = VacuumEnvironment()
     ef = EnvFrame(e)
-    ef.add_object(TraceAgent(NewRandomXYVacuumAgent()))
+    e.add_agent(TraceAgent(NewRandomXYVacuumAgent()),location=(5,5))
 
-    i=0
-    for o in e.objects:
-        i+=1
-        print(i)
+    if False:
+        for x in range(1,9):
+            for y in range(1,9):
+                e.add_object(Dirt(),location=(x,y))
+
 
     ef.run()
     ef.mainloop()
