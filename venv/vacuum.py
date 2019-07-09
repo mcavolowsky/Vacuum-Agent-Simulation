@@ -196,11 +196,11 @@ class XYEnvironment(Environment):
 
     def add_walls(self):
         "Put walls around the entire perimeter of the grid."
-        for x in range(self.width):
+        for x in range(self.width-1):
             self.add_object(Wall(), (x, 0))
-            self.add_object(Wall(), (x, self.height-1))
-        for y in range(self.height):
-            self.add_object(Wall(), (0, y))
+            self.add_object(Wall(), (x+1, self.height-1))
+        for y in range(self.height-1):
+            self.add_object(Wall(), (0, y+1))
             self.add_object(Wall(), (self.width-1, y))
 
     def turn_heading(self, heading, inc,
@@ -272,16 +272,34 @@ def test1():
 
     e = VacuumEnvironment(width=20,height=20)
     ef = EnvFrame(e)
-    for i in range(1,9):
-        e.add_agent(NewRandomReflexAgent(debug=True),location=(i,i)).id = i
-    ef.configure_display()
+    for i in range(1,19):
+        e.add_agent(NewRandomReflexAgent(debug=False),location=(1,i)).id = i
+    if True:
+        for x in range(e.width/2-5,e.width/2+5):
+            for y in range(e.height/2-5,e.height/2+5):
+                if ((x == (e.width/2-5)) or (x == (e.width/2+4)) or
+                    (y == (e.height/2-5)) or (y == (e.height/2+4))):
+                    e.add_object(Wall(), (x,y))
+                else:
+                    e.add_object(DeadCell(), (x,y))
+
+
+    if False:
+        for x in range(e.width/2-5,e.width/2+4):
+            e.add_object(Wall(), (x, e.height/2-5))
+            e.add_object(Wall(), (x+1, e.height/2 + 4))
+        for y in range(e.height/2-5,e.height/2+4):
+            e.add_object(Wall(), (e.width/2-5, y+1))
+            e.add_object(Wall(), (e.width/2+4, y))
 
     if False:
         for x in range(1,9):
             for y in range(1,9):
                 e.add_object(Dirt(),location=(x,y))
 
+    print(e.find_at(Wall,(0,0)))
 
+    ef.configure_display()
     ef.run()
     ef.mainloop()
 

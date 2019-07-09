@@ -41,3 +41,6 @@ class Dirt(Object):
 
 class Wall(Object):
     blocker = True
+
+class DeadCell(Wall):
+    pass
