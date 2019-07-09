@@ -270,10 +270,10 @@ def test_agent(AgentFactory, steps, envs):
 
 def test1():
 
-    e = VacuumEnvironment()
+    e = VacuumEnvironment(width=20,height=20)
     ef = EnvFrame(e)
     for i in range(1,9):
-        e.add_agent(TraceAgent(NewRandomReflexAgent()),location=(i,i)).id = i
+        e.add_agent(NewRandomReflexAgent(debug=True),location=(i,i)).id = i
     ef.configure_display()
 
     if False:

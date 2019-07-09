@@ -39,7 +39,5 @@ class Dirt(Object):
         else:
             return False
 
-    image_source = 'dirt'
-
 class Wall(Object):
     blocker = True

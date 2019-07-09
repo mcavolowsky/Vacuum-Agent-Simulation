@@ -27,13 +27,13 @@ class Agent(Object):
         self.alive = True
     blocker = True
 
-def TraceAgent(agent):
+def DebugAgent(agent):
     '''
     Wrap the agent's program to print its input and output. This will let you see what the agent is doing in the
     environment.
     '''
 
-    # Mark: Do we just replace the agent parent class with TraceAgent to enable printing?
+    # Mark: Do we just replace the agent parent class with DebugAgent to enable printing?
     old_program = agent.program
     def new_program(percept):
         action = old_program(percept)
@@ -66,10 +66,13 @@ class RandomXYAgent(XYAgent):
         Agent.__init__(self)
         self.program = lambda percept: random.choice(actions)
 
-def NewRandomXYAgent():
+def NewRandomXYAgent(debug=False):
     "Randomly choose one of the actions from the vaccum environment."
     # the extra forwards are just to alter the probabilities
-    return RandomXYAgent(['TurnRight', 'TurnLeft', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward'])
+    if debug:
+        return DebugAgent(RandomXYAgent(['TurnRight', 'TurnLeft', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward']))
+    else:
+        return RandomXYAgent(['TurnRight', 'TurnLeft', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward'])
     #return RandomXYAgent(['TurnRight', 'TurnLeft', 'Forward', 'Grab', 'Release'])
 
 class SimpleReflexAgent(XYAgent):
@@ -99,10 +102,13 @@ class RandomReflexAgent(XYAgent):
                 return random.choice(actions)
         self.program = program
 
-def NewRandomReflexAgent():
+def NewRandomReflexAgent(debug=False):
     "If the cell is dirty, Grab the dirt; otherwise, randomly choose one of the actions from the vaccum environment."
     # the extra forwards are just to alter the probabilities
-    return RandomReflexAgent(['TurnRight', 'TurnLeft', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward'])
+    if debug:
+        return DebugAgent(RandomReflexAgent(['TurnRight', 'TurnLeft', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward']))
+    else:
+        return RandomReflexAgent(['TurnRight', 'TurnLeft', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward'])
 
 class ReflexAgentWithState(XYAgent):
     '''This agent takes action based on the percept and state. [Fig. 2.16]'''
