@@ -27,10 +27,6 @@ class Agent(Object):
         self.alive = True
     blocker = True
 
-
-
-
-
 def TraceAgent(agent):
     '''
     Wrap the agent's program to print its input and output. This will let you see what the agent is doing in the

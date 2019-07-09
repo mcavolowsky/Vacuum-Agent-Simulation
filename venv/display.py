@@ -80,15 +80,6 @@ class EnvFrame(tk.Frame):
         '''Choose an object within radius and edit its fields.'''
         pass
 
-    def add_object(self, obj, location=(1, 1)):
-        print('adding ef object')
-        if isinstance(obj, Agent):
-            self.env.add_agent(obj, location)
-        else:
-            self.env.add_object(obj, location)
-        if (hasattr(obj, 'image') and obj.image != None and hasattr(obj, 'location')):
-            obj.image = self.canvas.create_image((obj.location[0]+0.5)*self.cellwidth, (obj.location[1]+0.5)*self.cellwidth, image=self.images[obj.image_source])
-
     def update_display(self):
         for obj in self.env.objects:
             if obj.image:
