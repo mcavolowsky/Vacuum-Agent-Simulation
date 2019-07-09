@@ -6,7 +6,6 @@ http://aima.cs.berkeley.edu/python/agents.html
 http://aima.cs.berkeley.edu/python/agents.py
 '''
 
-import Tkinter as tk
 import inspect
 from utils import *
 import random, copy
@@ -15,6 +14,7 @@ import random, copy
 #import agents as ag
 from agents import *
 from objects import *
+from display import *
 
 '''Implement Agents and Environments (Chapters 1-2).
 
@@ -71,7 +71,7 @@ class Environment:
         "Change the world to reflect this action. Override this."
         raise NotImplementedError
 
-    def default_location(self, object):
+    def default_location(self, obj):
         return None # Default location to place a new object with unspecified location.
 
     def exogenous_change(self):
@@ -108,16 +108,16 @@ class Environment:
                 if self.is_done(): return
                 self.step()
 
-    def add_object(self, object, location=None):
+    def add_object(self, obj, location=None):
         '''Add an object to the environment, setting its location. Also keep track of objects that are agents.
         Shouldn't need to override this.'''
-        object.location = location or self.default_location(object)
+        obj.location = location or self.default_location(obj)
         # Mark: ^^ unsure about this line, lazy evaluation means it will only process if location=None?
-        self.objects.append(object)
-        if isinstance(object, Agent):
-            object.performance = 0
-            self.agents.append(object)
-        return self
+        self.objects.append(obj)
+        if isinstance(obj, Agent):
+            obj.performance = 0
+            self.agents.append(obj)
+        return obj
 
 
 class XYEnvironment(Environment):
@@ -172,25 +172,27 @@ class XYEnvironment(Environment):
         "Return the percept for this object."
         return obj.__class__.__name__
 
-    def default_location(self, object):
+    def default_location(self, obj):
         return (random.choice(self.width), random.choice(self.height))
 
-    def move_to(self, object, destination):
+    def move_to(self, obj, destination):
         "Move an object to a new location."
 
         obstacles = [os for os in self.objects_at(destination) if os.blocker]
         if not obstacles:
-            object.location = destination
+            obj.location = destination
 
 
-    def add_object(self, object, location=(1, 1)):
-        Environment.add_object(self, object, location)
-        object.holding = []
-        object.held = None
+    def add_object(self, obj, location=(1, 1)):
+        Environment.add_object(self, obj, location)
+        obj.holding = []
+        obj.held = None
+        return obj
 
     def add_agent(self, agent, location=(1,1)):
         agent.bump = False
         self.add_object(agent, location)
+        return agent
 
     def add_walls(self):
         "Put walls around the entire perimeter of the grid."
@@ -266,108 +268,13 @@ def test_agent(AgentFactory, steps, envs):
 
 #______________________________________________________________________________
 
-
-class EnvFrame(tk.Frame):
-    def __init__(self, env, title='AIMA GUI', cellwidth=50, n=10):
-        update(self, cellwidth=cellwidth, running=False, delay=1.0)
-        self.n = n
-        self.running = 0
-        self.delay = 1.0
-        self.env = env
-        self.cellwidth = cellwidth
-        tk.Frame.__init__(self, None, width=(cellwidth + 2) * n, height=(cellwidth + 2) * n)
-        # self.title(title)
-        # Toolbar
-        toolbar = tk.Frame(self, relief='raised', bd=2)
-        toolbar.pack(side='top', fill='x')
-        for txt, cmd in [('Step >', self.next_step), ('Run >>', self.run),
-                         ('Stop [ ]', self.stop)]:
-            tk.Button(toolbar, text=txt, command=cmd).pack(side='left')
-        tk.Label(toolbar, text='Delay').pack(side='left')
-        scale = tk.Scale(toolbar, orient='h', from_=0.0, to=10, resolution=0.5,
-                         command=lambda d: setattr(self, 'delay', d))
-        scale.set(self.delay)
-        scale.pack(side='left')
-        # Canvas for drawing on
-        self.canvas = tk.Canvas(self, width=(cellwidth + 1) * n,
-                                height=(cellwidth + 1) * n, background="white")
-        self.canvas.bind('<Button-1>', self.left)  ## What should this do?
-        self.canvas.bind('<Button-2>', self.edit_objects)
-        self.canvas.bind('<Button-3>', self.add_object)
-        if cellwidth:
-            c = self.canvas
-            for i in range(1, n + 1):
-                c.create_line(0, i * cellwidth, n * cellwidth, i * cellwidth)
-                c.create_line(i * cellwidth, 0, i * cellwidth, n * cellwidth)
-                c.pack(expand=1, fill='both')
-        self.pack()
-        self.images = {'':None, 'robot-right':tk.PhotoImage(file='img/robot-right.gif'),
-                       'robot-left':tk.PhotoImage(file='img/robot-left.gif'),
-                       'robot-up':tk.PhotoImage(file='img/robot-up.gif'),
-                       'robot-down':tk.PhotoImage(file='img/robot-down.gif'),
-                       'dirt':tk.PhotoImage(file='img/dirt (40x19).gif')}
-        # note up and down are switched, since (0,0) is in the upper left
-        self.orientation = {(1,0): 'robot-right', (-1,0): 'robot-left', (0,-1): 'robot-up', (0,1): 'robot-down'}
-
-    def background_run(self):
-        if self.running:
-            self.env.step()
-            self.update_display()
-
-            ms = int(1000 * max(float(self.delay), 0.5))
-            self.after(ms, self.background_run)
-
-    def run(self):
-        print 'run'
-        self.running = 1
-        self.background_run()
-
-    def next_step(self):
-        self.env.step()
-        self.update_display()
-
-    def stop(self):
-        print 'stop'
-        self.running = 0
-
-    def left(self, event):
-        print 'left at ', event.x / 50, event.y / 50
-
-    def edit_objects(self, event):
-        '''Choose an object within radius and edit its fields.'''
-        pass
-
-    def add_object(self, object, location=(1, 1)):
-        if isinstance(object, Agent):
-            self.env.add_agent(object, location)
-        else:
-            self.env.add_object(object, location)
-        if hasattr(object, 'location'):
-            object.image = self.canvas.create_image((object.location[0]+0.5)*self.cellwidth, (object.location[1]+0.5)*self.cellwidth, image=self.images[object.image_source])
-
-    def update_display(self):
-        for obj in self.env.objects:
-            if obj.image:
-                if isinstance(obj.location, tuple):
-                    if hasattr(obj, 'heading'):
-                        self.canvas.itemconfig(obj.image, image=self.images[self.orientation[obj.heading]])
-                    old_loc = self.canvas.coords(obj.image)
-                    self.canvas.move(obj.image, (obj.location[0]+0.5)*self.cellwidth-old_loc[0], (obj.location[1]+0.5)*self.cellwidth-old_loc[1])
-                elif isinstance(obj.location, Agent):
-                    self.canvas.itemconfig(obj.image, state='hidden')
-            else:
-                obj.image = self.canvas.create_image((obj.location[0] + 0.5) * self.cellwidth,
-                                                        (obj.location[1] + 0.5) * self.cellwidth,
-                                                        image=self.images[obj.image_source])
-
-#______________________________________________________________________________
-
 def test1():
 
     e = VacuumEnvironment()
     ef = EnvFrame(e)
     for i in range(1,9):
-        e.add_agent(TraceAgent(NewRandomReflexAgent()),location=(i,i))
+        e.add_agent(DisplayObject(TraceAgent(NewRandomReflexAgent())),location=(i,i))
+    ef.update_display()
 
     if False:
         for x in range(1,9):

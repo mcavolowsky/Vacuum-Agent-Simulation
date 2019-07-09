@@ -26,7 +26,6 @@ class Agent(Object):
         self.program = program
         self.alive = True
     blocker = True
-    image_source = 'robot-right'
 
 
 
