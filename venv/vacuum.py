@@ -273,8 +273,8 @@ def test1():
     e = VacuumEnvironment()
     ef = EnvFrame(e)
     for i in range(1,9):
-        e.add_agent(DisplayObject(TraceAgent(NewRandomReflexAgent())),location=(i,i))
-    ef.update_display()
+        e.add_agent(TraceAgent(NewRandomReflexAgent()),location=(i,i)).id = i
+    ef.configure_display()
 
     if False:
         for x in range(1,9):
@@ -285,4 +285,9 @@ def test1():
     ef.run()
     ef.mainloop()
 
-test1()
+def main():
+    test1()
+
+if __name__ == "__main__":
+    # execute only if run as a script
+    main()

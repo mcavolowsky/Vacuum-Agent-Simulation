@@ -36,7 +36,7 @@ class EnvFrame(tk.Frame):
                                 height=(cellwidth + 1) * n, background="white")
         self.canvas.bind('<Button-1>', self.left)  ## What should this do?
         self.canvas.bind('<Button-2>', self.edit_objects)
-        self.canvas.bind('<Button-3>', self.add_object)
+        self.canvas.bind('<Button-3>', self.edit_objects)
         if cellwidth:
             c = self.canvas
             for i in range(1, n + 1):
@@ -80,9 +80,14 @@ class EnvFrame(tk.Frame):
         '''Choose an object within radius and edit its fields.'''
         pass
 
+    def configure_display(self):
+        for obj in self.env.objects:
+            obj = DisplayObject(obj)
+        self.update_display()
+
     def update_display(self):
         for obj in self.env.objects:
-            if obj.image:
+            if hasattr(obj, 'image') and obj.image:
                 if isinstance(obj.location, tuple):
                     if hasattr(obj, 'heading'):
                         self.canvas.itemconfig(obj.image, image=self.images[self.orientation[obj.heading]])

@@ -6,7 +6,10 @@ class Object:
 
    # Mark: __repr__ exists to create a printable output of an object (in this case, name)
     def __repr__(self):
-        return '<%s>' % getattr(self, '__name__', self.__class__.__name__)
+        if self.id == '':
+            return '<%s>' % getattr(self, '__name__', self.__class__.__name__)
+        else:
+            return '<%s id=%s>' % (getattr(self, '__name__', self.__class__.__name__), self.id)
 
     def is_alive(self):
         '''Objects that are 'alive' should return true.'''
@@ -22,8 +25,9 @@ class Object:
 
     # can the object be passed over, or does it occupy space.
     blocker = False
-    image_source = ''
-    image = None
+    #image_source = ''
+    #image = None
+    id = ''
 
 class Dirt(Object):
     def __init__(self):
