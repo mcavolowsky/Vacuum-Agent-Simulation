@@ -6,6 +6,8 @@ import PIL.ImageTk as itk
 from objects import Object
 from utils import *
 
+USE_ICON_CLASS = False
+
 IMAGE_X_OFFSET = 0.5
 IMAGE_Y_OFFSET = 0.5
 
@@ -17,43 +19,44 @@ ID_Y_OFFSET = 0.0
 
 #______________________________________________________________________________
 
-class Icon():
-    def __repr__(self):
-        if self.id == '':
-            return '<%s>' % getattr(self, '__name__', self.__class__.__name__)
+if USE_ICON_CLASS:
+    class Icon():
+        def __repr__(self):
+            if self.id == '':
+                return '<%s>' % getattr(self, '__name__', self.__class__.__name__)
 
-    def __init__(self, parent, ef, images):
-        self.parent = parent
-        self.ef = ef
-        self.images = images
+        def __init__(self, parent, ef, images):
+            self.parent = parent
+            self.ef = ef
+            self.images = images
 
-    def object_to_image(self):
-        if hasattr(self.parent, 'heading'):
-            return self.ef.file2image[self.ef.class2file.get(getattr(self.parent, '__name__', self.parent.__class__.__name__),'') % self.ef.orientation[self.parent.heading]]
-        else:
-            return self.ef.file2image[self.ef.class2file.get(getattr(self.parent, '__name__', self.parent.__class__.__name__),'')]
+        def object_to_image(self):
+            if hasattr(self.parent, 'heading'):
+                return self.ef.file2image[self.ef.class2file.get(getattr(self.parent, '__name__', self.parent.__class__.__name__),'') % self.ef.orientation[self.parent.heading]]
+            else:
+                return self.ef.file2image[self.ef.class2file.get(getattr(self.parent, '__name__', self.parent.__class__.__name__),'')]
 
-    def move_to(self, newLocation):
-        dx = newLocation[0] - self.parent.location[0]
-        dy = newLocation[1] - self.parent.location[1]
-        for img in self.images:
+        def move_to(self, newLocation):
+            dx = newLocation[0] - self.parent.location[0]
+            dy = newLocation[1] - self.parent.location[1]
+            for img in self.images:
+                pass
+
+        def rotate(self):
+            # THIS NEEDS FIXING
+            #self.ef.canvas.itemconfig(self.parent.image, image=self.ef.object_to_image(self.parent))
             pass
 
-    def rotate(self):
-        # THIS NEEDS FIXING
-        #self.ef.canvas.itemconfig(self.parent.image, image=self.ef.object_to_image(self.parent))
-        pass
+        def hide(self):
+            for img in images:
+                self.ef.canvas.itemconfig(img, state='hidden')
 
-    def hide(self):
-        for img in images:
-            self.ef.canvas.itemconfig(img, state='hidden')
-
-    def update(self):
-        if isinstance(self.parent.location, tuple):
-            self.rotate()
-            self.move_to(self.parent.location)
-        else:
-            self.hide()
+        def update(self):
+            if isinstance(self.parent.location, tuple):
+                self.rotate()
+                self.move_to(self.parent.location)
+            else:
+                self.hide()
 
 class EnvFrame(tk.Frame):
     def __init__(self, env, root = tk.Tk(), title='Robot Vacuum Simulation', cellwidth=50, n=10):
@@ -63,7 +66,6 @@ class EnvFrame(tk.Frame):
         self.delay = 0.1
         self.env = env
         self.cellwidth = cellwidth
-        self.useIcon = False
 
         tk.Frame.__init__(self, None, width=min((cellwidth + 2) * env.width,self.root.winfo_screenwidth()),
                           height=min((cellwidth + 2) * env.height, self.root.winfo_screenheight()))
@@ -164,10 +166,12 @@ class EnvFrame(tk.Frame):
             return self.file2image[self.class2file.get(getattr(obj, '__name__', obj.__class__.__name__),'')]
 
     def DisplayObject(self, obj):
-        obj.image = None
-        obj.id_image = None
+        if USE_ICON_CLASS:
+            obj.icon = self.NewIcon(obj)
+        else:
+            obj.image = None
+            obj.id_image = None
 
-        if self.useIcon: obj.icon = self.NewIcon(obj)
         return obj
 
     def NewIcon(self, obj):
@@ -191,7 +195,7 @@ class EnvFrame(tk.Frame):
         self.update_display()
 
     def update_display(self):
-        if self.useIcon:
+        if USE_ICON_CLASS:
             for obj in self.env.objects:
                 obj.icon.update()
         else:
