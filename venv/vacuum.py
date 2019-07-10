@@ -22,18 +22,17 @@ The class hierarchies are as follows:
 
 Object ## A physical object that can exist in an environment
     Agent
-        Wumpus
-        RandomAgent
-        ReflexVacuumAgent
+        RandomReflexAgent
         ...
     Dirt
     Wall
+        DeadCell
+    Fire
     ...
 
 Environment ## An environment holds objects, runs simulations
     XYEnvironment
         VacuumEnvironment
-        WumpusEnvironment
 
 EnvFrame ## A graphical representation of the Environment
 
@@ -72,7 +71,8 @@ class Environment:
         raise NotImplementedError
 
     def default_location(self, obj):
-        return None # Default location to place a new object with unspecified location.
+        "Default location to place a new object with unspecified location"
+        return None
 
     def exogenous_change(self):
 	    "If there is spontaneous change in the world, override this."
@@ -104,18 +104,20 @@ class Environment:
             self.exogenous_change()
 
     def run(self, steps=1000):
-	    for step in range(steps): # Run the Environment for given number of time steps.
-                if self.is_done(): return
-                self.step()
+        for step in range(steps): # Run the Environment for given number of time steps.
+            if self.is_done(): return
+            self.step()
 
     def add_object(self, obj, location=None):
         '''Add an object to the environment, setting its location. Also keep track of objects that are agents.
         Shouldn't need to override this.'''
         obj.location = location or self.default_location(obj)
         # Mark: ^^ unsure about this line, lazy evaluation means it will only process if location=None?
+        # Add the new Object to self.objects
         self.objects.append(obj)
+        # If the object is an Agent, add it to self.agents and initialize performance parameter
         if isinstance(obj, Agent):
-            obj.performance = 0
+            obj.performance = 0  # why isn't this part of the Agent class?
             self.agents.append(obj)
         return obj
 
@@ -131,9 +133,12 @@ class XYEnvironment(Environment):
     #robot_images = {(1,0):'img/robot-right.gif',(-1,0):'img/robot-left.gif',(0,-1):'img/robot-up.gif',(0,1):'img/robot-down.gif'}
 
     def __init__(self, width=10, height=10):
+        # set all of the initial conditions with the update function
+        # self.objects = [], self.agents = [], self.width = width, and self.height = height
         update(self, objects=[], agents=[], width=width, height=height)
 
     def objects_of_type(self, cls):
+        # Use a list comprehension to return a list of all objects of type cls
         return [obj for obj in self.objects if isinstance(obj, cls)]
 
     def objects_at(self, location):
@@ -142,44 +147,64 @@ class XYEnvironment(Environment):
 
     def objects_near(self, location, radius):
         "Return all objects within radius of location."
-        radius2 = radius * radius
+        radius2 = radius * radius # square radius instead of taking the square root for faster processing
         return [obj for obj in self.objects
                 if distance2(location, obj.location) <= radius2]
 
-    def percept(self, agent):
+    def percept(self, agent): # Unused, currently at default settings
         "By default, agent perceives objects within radius r."
         return [self.object_percept(obj, agent)
                 for obj in self.objects_near(agent)]
 
     def execute_action(self, agent, action):
+        # The world processes actions on behalf of an agent.
+        # Agents decide what to do, but the Environment class actually processes the behavior.
+        #
+        # Implemented actions are 'TurnRignt', 'TurnLeft', 'Forward', 'Grab', 'Release'
         if action == 'TurnRight':
+            # decrement the heading by -90° by getting the previous index of the headings array
             agent.heading = self.turn_heading(agent.heading, -1)
         elif action == 'TurnLeft':
+            # increment the heading by +90° by getting the next index of the headings array
             agent.heading = self.turn_heading(agent.heading, +1)
         elif action == 'Forward':
+            # move the Agent in the facing direction by adding the heading vector to the Agent location
             self.move_to(agent, vector_add(agent.heading, agent.location))
         elif action == 'Grab':
+            # check to see if any objects at the Agent's location are grabbable by the Agent
             objs = [obj for obj in self.objects_at(agent.location)
                 if (obj != agent and obj.is_grabbable(agent))]
+            # if so, pick up all grabbable objects and add them to the holding array
             if objs:
                 agent.holding.append(objs)
                 for o in objs:
+                    # set the location of the Object = the Agent instance carrying the Object
+                    # by setting the location to an object instead of a tuple, we can now detect
+                    # when to remove if from the display.  This may be useful in other ways, if
+                    # the object needs to know who it's holder is
                     o.location = agent
-
         elif action == 'Release':
+            # drop an objects being held by the Agent.
             if agent.holding:
-                agent.holding.pop()
-        agent.bump = False
+                # restore the location parameter to add the object back to the display
+                agent.holding.pop().location = agent.location
+        agent.bump = False  # Reset the bump value of the agent
 
     def object_percept(self, obj, agent): #??? Should go to object?
         "Return the percept for this object."
         return obj.__class__.__name__
 
     def default_location(self, obj):
+        # If no location is specified, set the location to be a random location in the Environment.
         return (random.choice(self.width), random.choice(self.height))
 
     def move_to(self, obj, destination):
         "Move an object to a new location."
+        # Currently move_to assumes that the object is only moving a single cell at a time
+        # e.g. agent.location + agent.heading => (x,y) + (0,1)
+        #
+        # The function finds all objects at the destination that have the blocker flag set.
+        # If there are none, move to the destination
 
         obstacles = [os for os in self.objects_at(destination) if os.blocker]
         if not obstacles:
