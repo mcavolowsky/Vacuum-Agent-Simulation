@@ -710,7 +710,6 @@ class PriorityQueue(Queue):
 ## Alas, it is Fig[3,10] not Fig[3.10], because that would be the same as Fig[3.1]
 Fig = {} 
 
-
 #______________________________________________________________________________
 # Mark's Helpers
 

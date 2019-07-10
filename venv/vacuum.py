@@ -271,7 +271,7 @@ def test_agent(AgentFactory, steps, envs):
 def test1():
 
     e = VacuumEnvironment(width=20,height=20)
-    ef = EnvFrame(e)
+    ef = EnvFrame(e,cellwidth=30)
     for i in range(1,19):
         e.add_agent(NewRandomReflexAgent(debug=False),location=(1,i)).id = i
 
