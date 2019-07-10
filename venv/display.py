@@ -63,6 +63,8 @@ class EnvFrame(tk.Frame):
         self.delay = 0.1
         self.env = env
         self.cellwidth = cellwidth
+        self.useIcon = False
+
         tk.Frame.__init__(self, None, width=min((cellwidth + 2) * env.width,self.root.winfo_screenwidth()),
                           height=min((cellwidth + 2) * env.height, self.root.winfo_screenheight()))
         self.root.title(title)
@@ -165,7 +167,7 @@ class EnvFrame(tk.Frame):
         obj.image = None
         obj.id_image = None
 
-        obj.icon = self.NewIcon(obj)
+        if self.useIcon: obj.icon = self.NewIcon(obj)
         return obj
 
     def NewIcon(self, obj):
@@ -189,7 +191,7 @@ class EnvFrame(tk.Frame):
         self.update_display()
 
     def update_display(self):
-        if False:
+        if self.useIcon:
             for obj in self.env.objects:
                 obj.icon.update()
         else:
