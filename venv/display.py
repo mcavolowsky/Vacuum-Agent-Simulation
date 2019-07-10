@@ -27,7 +27,7 @@ class EnvFrame(tk.Frame):
         update(self, cellwidth=cellwidth, running=False, delay=1.0)
         self.root = root
         self.running = 0
-        self.delay = 0.0
+        self.delay = 0.1
         self.env = env
         self.cellwidth = cellwidth
         tk.Frame.__init__(self, None, width=min((cellwidth + 2) * env.width,self.root.winfo_screenwidth()),
@@ -41,7 +41,7 @@ class EnvFrame(tk.Frame):
                          ('Stop [ ]', self.stop)]:
             tk.Button(toolbar, text=txt, command=cmd).pack(side='left')
         tk.Label(toolbar, text='Delay').pack(side='left')
-        scale = tk.Scale(toolbar, orient='h', from_=0.0, to=10, resolution=0.5,
+        scale = tk.Scale(toolbar, orient='h', from_=0.0, to=10, resolution=0.1,
                          command=lambda d: setattr(self, 'delay', d))
         scale.set(self.delay)
         scale.pack(side='left')
@@ -79,24 +79,25 @@ class EnvFrame(tk.Frame):
         self.class2file = {'':'', 'RandomReflexAgent':'robot-%s',
                        'Dirt':'dirt',
                        'Wall':'wall'}
-        self.file2image = {'':None, 'robot-right':itk.PhotoImage(Image.open('img/robot-right.png').resize((40,40))),
-                       'robot-left':itk.PhotoImage(Image.open('img/robot-left.png').resize((40,40))),
-                       'robot-up':itk.PhotoImage(Image.open('img/robot-up.png').resize((40,40))),
-                       'robot-down':itk.PhotoImage(Image.open('img/robot-down.png').resize((40,40))),
-                       'dirt':itk.PhotoImage(Image.open('img/dirt.png').resize((40,19))),
-                       'wall':itk.PhotoImage(Image.open('img/wall.png').resize((40,40)))}
+        self.file2image = {'':None, 'robot-right':itk.PhotoImage(Image.open('img/robot-right.png').resize((40,40),resample=Image.LANCZOS)),
+                       'robot-left':itk.PhotoImage(Image.open('img/robot-left.png').resize((40,40),resample=Image.LANCZOS)),
+                       'robot-up':itk.PhotoImage(Image.open('img/robot-up.png').resize((40,40),resample=Image.LANCZOS)),
+                       'robot-down':itk.PhotoImage(Image.open('img/robot-down.png').resize((40,40),resample=Image.LANCZOS)),
+                       'dirt':itk.PhotoImage(Image.open('img/dirt.png').resize((40,19),resample=Image.LANCZOS)),
+                       'wall':itk.PhotoImage(Image.open('img/wall.png').resize((40,40),resample=Image.LANCZOS))}
         # note up and down are switched, since (0,0) is in the upper left
         self.orientation = {(1,0): 'right', (-1,0): 'left', (0,-1): 'up', (0,1): 'down'}
 
         self.canvas.config(scrollregion=(0, 0, (self.cellwidth + 1) * self.env.width, (self.cellwidth + 1) * self.env.height))
 
     def background_run(self):
-        if self.running:
-            self.env.step()
-            self.update_display()
+        #with Timer(name='Loop Timer', format='%.4f'):
+            if self.running:
+                self.env.step()
+                self.update_display()
 
-            ms = int(1000 * max(float(self.delay), 0.5))
-            self.after(ms, self.background_run)
+                ms = int(1000 * max(float(self.delay), 0.01))
+                self.after(ms, self.background_run)
 
     def run(self):
         print 'run'

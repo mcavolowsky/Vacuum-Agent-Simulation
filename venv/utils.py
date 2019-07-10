@@ -711,4 +711,23 @@ class PriorityQueue(Queue):
 Fig = {} 
 
 
+#______________________________________________________________________________
+# Mark's Helpers
 
+# Timer class (courtesy of Eli Bendersky on StackOverflow)
+
+import time
+
+class Timer(object):
+    def __init__(self, name=None, format='%s'):
+        self.name = name
+        self.format = format
+
+    def __enter__(self):
+        self.tstart = time.time()
+
+    def __exit__(self, type, value, traceback):
+        if self.name:
+            print(('[%s] - Elapsed: ' + self.format) % (self.name, time.time() - self.tstart))
+        else:
+            print(('Elapsed: ' + self.format) % (time.time() - self.tstart))

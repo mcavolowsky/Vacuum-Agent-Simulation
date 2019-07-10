@@ -274,6 +274,8 @@ def test1():
     ef = EnvFrame(e)
     for i in range(1,19):
         e.add_agent(NewRandomReflexAgent(debug=False),location=(1,i)).id = i
+
+    # Generate walls with dead cells in the center
     if True:
         for x in range(e.width/2-5,e.width/2+5):
             for y in range(e.height/2-5,e.height/2+5):
@@ -283,7 +285,7 @@ def test1():
                 else:
                     e.add_object(DeadCell(), (x,y))
 
-
+    # Generate hollow walls in center
     if False:
         for x in range(e.width/2-5,e.width/2+4):
             e.add_object(Wall(), (x, e.height/2-5))
@@ -292,12 +294,11 @@ def test1():
             e.add_object(Wall(), (e.width/2-5, y+1))
             e.add_object(Wall(), (e.width/2+4, y))
 
+    # Fill a square area with dirt
     if False:
         for x in range(1,9):
             for y in range(1,9):
                 e.add_object(Dirt(),location=(x,y))
-
-    print(e.find_at(Wall,(0,0)))
 
     ef.configure_display()
     ef.run()
