@@ -133,6 +133,9 @@ class XYEnvironment(Environment):
     def __init__(self, width=10, height=10):
         update(self, objects=[], agents=[], width=width, height=height)
 
+    def objects_of_type(self, cls):
+        return [obj for obj in self.objects if isinstance(obj, cls)]
+
     def objects_at(self, location):
         "Return all objects exactly at a given location."
         return [obj for obj in self.objects if obj.location == location]
@@ -239,11 +242,39 @@ class VacuumEnvironment(XYEnvironment):
     def find_at(self, cls, loc):
         return [o for o in self.objects_at(loc) if isinstance(o, cls)]
 
-    def exogenous_change(self):
-        if random.uniform(0,1)<.9:
+    def exogenous_dirt(self):
+        if random.uniform(0,1)<1.0:
             loc = (random.randrange(self.width), random.randrange(self.height))
             if not (self.find_at(Dirt, loc) or self.find_at(Wall, loc)):
                 self.add_object(Dirt(), loc)
+
+
+    def exogenous_fire(self):
+        fs = self.objects_of_type(Fire)
+
+        if fs:
+            for f in fs:
+                if f.t == 0:
+                    f.destroy_images()
+                    self.objects.remove(f)
+                else:
+                    f.t -= 1
+                    if random.uniform(0, 1) < 0.21:
+                        emptyCells = [(x, y) for x in range(f.location[0] - 1, f.location[0] + 2)
+                                      for y in range(f.location[1] - 1, f.location[1] + 2)
+                                      if not self.objects_at((x, y))]
+                        if emptyCells: self.add_object(Fire(), random.choice(emptyCells))
+        else:  # if there is no fire
+            for i in range(5):
+                for i in range(10):  # try 10 times, would do while, but that could get stuck
+                    loc = (random.randrange(1, self.width), random.randrange(1, self.width))
+                    if not self.objects_at(loc):
+                        self.add_object(Fire(), loc)
+                        break
+
+    def exogenous_change(self):
+        self.exogenous_dirt()
+        self.exogenous_fire()
 
 #______________________________________________________________________________
 
@@ -272,6 +303,8 @@ def test1():
 
     e = VacuumEnvironment(width=20,height=20)
     ef = EnvFrame(e,cellwidth=30)
+
+    # Create agents on left wall
     for i in range(1,19):
         e.add_agent(NewRandomReflexAgent(debug=False),location=(1,i)).id = i
 

@@ -1,4 +1,4 @@
-
+import new
 import Tkinter as tk
 import PIL.Image as Image
 import PIL.ImageTk as itk
@@ -6,27 +6,30 @@ import PIL.ImageTk as itk
 from objects import Object
 from utils import *
 
+# Debug flag for the Icon class
 USE_ICON_CLASS = False
 
+# Relative (%) offset values for image positioning from upper left corner of the cell
 IMAGE_X_OFFSET = 0.5
 IMAGE_Y_OFFSET = 0.5
 
+# Relative (%) offset values for image positioning from the above image offset if there is an ID value set
 IMAGEID_X_OFFSET = 0.05
 IMAGEID_Y_OFFSET = 0.05
 
+# Relative (%) offset values for the ID text field from the upper left corner of the cell
 ID_X_OFFSET = 0.03
 ID_Y_OFFSET = 0.0
 
 #______________________________________________________________________________
 
-if USE_ICON_CLASS:
+if USE_ICON_CLASS:  # If we are using the Icon class, run the code below
     class Icon():
-        def __repr__(self):
-            if self.id == '':
-                return '<%s>' % getattr(self, '__name__', self.__class__.__name__)
+        def __repr__(self): # Define the string representation of the class (this is to avoid importing the Object class
+            return '<%s>' % getattr(self, '__name__', self.__class__.__name__)
 
         def __init__(self, parent, ef, images):
-            self.parent = parent
+            self.parent = parent        # parent object
             self.ef = ef
             self.images = images
 
@@ -51,12 +54,24 @@ if USE_ICON_CLASS:
             for img in images:
                 self.ef.canvas.itemconfig(img, state='hidden')
 
+        def destroy_images(self):
+            print('implement me')
+            pass
+
         def update(self):
             if isinstance(self.parent.location, tuple):
                 self.rotate()
                 self.move_to(self.parent.location)
             else:
                 self.hide()
+else:
+    def destroy_images(self):
+        self.canvas.delete(self.image)
+        self.canvas.delete(self.id_image)
+        self.image = None
+        self.id_image = None
+
+
 
 class EnvFrame(tk.Frame):
     def __init__(self, env, root = tk.Tk(), title='Robot Vacuum Simulation', cellwidth=50, n=10):
@@ -115,13 +130,15 @@ class EnvFrame(tk.Frame):
 
         self.class2file = {'':'', 'RandomReflexAgent':'robot-%s',
                        'Dirt':'dirt',
-                       'Wall':'wall'}
+                       'Wall':'wall',
+                        'Fire':'fire'}
         self.file2image = {'':None, 'robot-right':itk.PhotoImage(Image.open('img/robot-right.png').resize((int(0.8*cellwidth),int(0.8*cellwidth)),resample=Image.LANCZOS)),
                        'robot-left':itk.PhotoImage(Image.open('img/robot-left.png').resize((int(0.8*cellwidth),int(0.8*cellwidth)),resample=Image.LANCZOS)),
                        'robot-up':itk.PhotoImage(Image.open('img/robot-up.png').resize((int(0.8*cellwidth),int(0.8*cellwidth)),resample=Image.LANCZOS)),
                        'robot-down':itk.PhotoImage(Image.open('img/robot-down.png').resize((int(0.8*cellwidth),int(0.8*cellwidth)),resample=Image.LANCZOS)),
                        'dirt':itk.PhotoImage(Image.open('img/dirt.png').resize((int(0.8*cellwidth),int(0.4*cellwidth)),resample=Image.LANCZOS)),
-                       'wall':itk.PhotoImage(Image.open('img/wall.png').resize((int(0.8*cellwidth),int(0.8*cellwidth)),resample=Image.LANCZOS))}
+                       'wall':itk.PhotoImage(Image.open('img/wall.png').resize((int(0.8*cellwidth),int(0.8*cellwidth)),resample=Image.LANCZOS)),
+                       'fire':itk.PhotoImage(Image.open('img/fire.png').resize((int(0.55*cellwidth),int(0.8*cellwidth)),resample=Image.LANCZOS))}
         # note up and down are switched, since (0,0) is in the upper left
         self.orientation = {(1,0): 'right', (-1,0): 'left', (0,-1): 'up', (0,1): 'down'}
 
@@ -171,7 +188,8 @@ class EnvFrame(tk.Frame):
         else:
             obj.image = None
             obj.id_image = None
-
+            obj.canvas = self.canvas
+            obj.destroy_images = new.instancemethod(destroy_images,obj,None)
         return obj
 
     def NewIcon(self, obj):
@@ -200,6 +218,8 @@ class EnvFrame(tk.Frame):
                 obj.icon.update()
         else:
             for obj in self.env.objects:
+                if not(hasattr(obj,'image') and hasattr(obj,'id_image')):
+                    self.DisplayObject(obj)
                 if hasattr(obj, 'image') and obj.image:
                     if isinstance(obj.location, tuple):
                         self.canvas.itemconfig(obj.image, image=self.object_to_image(obj))

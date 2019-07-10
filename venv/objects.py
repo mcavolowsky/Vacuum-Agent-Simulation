@@ -19,6 +19,7 @@ class Object:
     def is_grabbable(self, obj):
         return False
 
+
     # can the object be passed over, or does it occupy space.
     blocker = False
     #image_source = ''
@@ -40,3 +41,13 @@ class Wall(Object):
 
 class DeadCell(Wall):
     pass
+
+class Fire(Wall):
+    def __repr__(self):
+        if self.id == '':
+            return '<%s t=%s>' % (getattr(self, '__name__', self.__class__.__name__), self.t)
+        else:
+            return '<%s t=%s id=%s>' % (getattr(self, '__name__', self.__class__.__name__), self.t, self.id)
+
+    def __init__(self):
+        self.t = 5
