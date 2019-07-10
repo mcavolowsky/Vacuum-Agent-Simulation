@@ -41,18 +41,6 @@ def DebugAgent(agent):
         return action
     agent.program = new_program
     return agent
-
-
-class ReflexVacuumAgent(Agent):
-    "A reflex agent for the two-state vacuum environment. [Fig. 2.8]"
-
-    def __init__(self):
-        Agent.__init__(self)
-        def program((location, status)):
-            if status == 'Dirty': return 'Suck'
-            elif location == loc_A: return 'Right'
-            elif location == loc_B: return 'Left'
-        self.program = program
 #______________________________________________________________________________
 
 class XYAgent(Agent):
@@ -75,19 +63,6 @@ def NewRandomXYAgent(debug=False):
         return RandomXYAgent(['TurnRight', 'TurnLeft', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward'])
     #return RandomXYAgent(['TurnRight', 'TurnLeft', 'Forward', 'Grab', 'Release'])
 
-class SimpleReflexAgent(XYAgent):
-    '''This agent takes action based solely on the percept. [Fig. 2.13]'''
-
-    def __init__(self, rules, interpret_input):
-        Agent.__init__(self)
-        def program(percept):
-            state = interpret_input(percept)
-            rule = rule_match(state, rules)
-            action = rule.action
-            return action
-        self.program = program
-
-
 class RandomReflexAgent(XYAgent):
     '''This agent takes action based solely on the percept. [Fig. 2.13]'''
 
@@ -109,6 +84,18 @@ def NewRandomReflexAgent(debug=False):
         return DebugAgent(RandomReflexAgent(['TurnRight', 'TurnLeft', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward']))
     else:
         return RandomReflexAgent(['TurnRight', 'TurnLeft', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward', 'Forward'])
+
+class SimpleReflexAgent(XYAgent):
+    '''This agent takes action based solely on the percept. [Fig. 2.13]'''
+
+    def __init__(self, rules, interpret_input):
+        Agent.__init__(self)
+        def program(percept):
+            state = interpret_input(percept)
+            rule = rule_match(state, rules)
+            action = rule.action
+            return action
+        self.program = program
 
 class ReflexAgentWithState(XYAgent):
     '''This agent takes action based on the percept and state. [Fig. 2.16]'''
