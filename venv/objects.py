@@ -15,10 +15,6 @@ class Object:
         '''Objects that are 'alive' should return true.'''
         return hasattr(self, 'alive') and self.alive
 
-    def display(self, canvas, x, y, width, height):
-        '''Display an image of this Object on the canvas.'''
-        pass
-
     # is_grabbable()
     def is_grabbable(self, obj):
         return False
