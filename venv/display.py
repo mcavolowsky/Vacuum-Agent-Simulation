@@ -1,5 +1,5 @@
-import new
-import Tkinter as tk
+from types import MethodType
+import tkinter as tk
 import PIL.Image as Image
 import PIL.ImageTk as itk
 
@@ -154,7 +154,7 @@ class EnvFrame(tk.Frame):
                 self.after(ms, self.background_run)
 
     def run(self):
-        print 'run'
+        print('run')
         self.running = 1
         self.background_run()
 
@@ -163,14 +163,14 @@ class EnvFrame(tk.Frame):
         self.update_display()
 
     def stop(self):
-        print 'stop'
+        print('stop')
         self.running = 0
 
     def left(self, event):
         loc = (event.x / (self.cellwidth + 1), event.y / (self.cellwidth + 1))
         objs = self.env.find_at(Object, loc)
         if not objs: objs = 'Nothing'
-        print 'Cell (%s, %s) contains %s' %  (loc[0], loc[1], objs)
+        print('Cell (%s, %s) contains %s' %  (loc[0], loc[1], objs))
 
     def edit_objects(self, event):
         '''Choose an object within radius and edit its fields.'''
@@ -189,7 +189,7 @@ class EnvFrame(tk.Frame):
             obj.image = None
             obj.id_image = None
             obj.canvas = self.canvas
-            obj.destroy_images = new.instancemethod(destroy_images,obj,None)
+            obj.destroy_images = MethodType(destroy_images,obj)
         return obj
 
     def NewIcon(self, obj):

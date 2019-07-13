@@ -13,19 +13,20 @@ import operator, math, random, copy, sys, os.path, bisect
 # 3 years old). The first part of this file brings you up to 2.4
 # compatibility if you are running in Python 2.2 or 2.3:
 
-try: bool, True, False ## Introduced in 2.3
-except NameError:
-    class bool(int):
-        "Simple implementation of Booleans, as in PEP 285"
-        def __init__(self, val): self.val = val
-        def __int__(self): return self.val
-        def __repr__(self): return ('False', 'True')[self.val]
 
-    True, False = bool(1), bool(0)
+#try: bool, True, False ## Introduced in 2.3
+#except NameError:
+#    class bool(int):
+#        "Simple implementation of Booleans, as in PEP 285"
+#        def __init__(self, val): self.val = val
+#        def __int__(self): return self.val
+#        def __repr__(self): return ('False', 'True')[self.val]
+#
+#    True, False = bool(1), bool(0)
 
 try: sum ## Introduced in 2.3
 except NameError:
-    def sum(seq, start=0): 
+    def sum(seq, start=0):
         """Sum the elements of seq.
         >>> sum([1, 2, 3])
         6
@@ -68,7 +69,7 @@ except NameError:
         """Copy seq and sort and return it.
         >>> sorted([3, 1, 2])
         [1, 2, 3]
-        """     
+        """
         seq2 = copy.copy(seq)
         if key:
             if cmp == None:
@@ -79,36 +80,36 @@ except NameError:
                 seq2.sort()
             else:
                 seq2.sort(cmp)
-        if reverse: 
-            seq2.reverse() 
+        if reverse:
+            seq2.reverse()
         return seq2
 
-try: 
+try:
     set, frozenset ## set builtin introduced in 2.4
 except NameError:
-    try: 
+    try:
         import sets ## sets module introduced in 2.3
         set, frozenset = sets.Set, sets.ImmutableSet
     except (NameError, ImportError):
         class BaseSet:
             "set type (see http://docs.python.org/lib/types-set.html)"
 
-            
+
             def __init__(self, elements=[]):
                 self.dict = {}
                 for e in elements:
                     self.dict[e] = 1
-        
+
             def __len__(self):
                 return len(self.dict)
-        
+
             def __iter__(self):
                 for e in self.dict:
                     yield e
-        
+
             def __contains__(self, element):
                 return element in self.dict
-        
+
             def issubset(self, other):
                 for e in self.dict.keys():
                     if e not in other:
@@ -120,11 +121,11 @@ except NameError:
                     if e not in self:
                         return False
                 return True
-        
+
 
             def union(self, other):
                 return type(self)(list(self) + list(other))
-        
+
             def intersection(self, other):
                 return type(self)([e for e in self.dict if e in other])
 
@@ -161,9 +162,9 @@ except NameError:
             def __hash__(self):
                 return self.hash
 
-        class set(BaseSet):   
+        class set(BaseSet):
             "A set is a BaseSet that does not have a hash, but is mutable."
-        
+
             def update(self, other):
                 for e in other:
                     self.add(e)
@@ -183,43 +184,43 @@ except NameError:
 
             def symmetric_difference_update(self, other):
                 to_remove1 = [e for e in self.dict if e in other]
-                to_remove2 = [e for e in other if e in self.dict] 
+                to_remove2 = [e for e in other if e in self.dict]
                 self.difference_update(to_remove1)
                 self.difference_update(to_remove2)
                 return self
 
             def add(self, element):
                 self.dict[element] = 1
-                
+
             def remove(self, element):
                 del self.dict[element]
-        
+
             def discard(self, element):
                 if element in self.dict:
                     del self.dict[element]
-                    
+
             def pop(self):
                 key, val = self.dict.popitem()
                 return key
-        
+
             def clear(self):
                 self.dict.clear()
-        
+
             __ior__ = update
             __iand__ = intersection_update
             __isub__ = difference_update
             __ixor__ = symmetric_difference_update
-        
-        
+
+
 
 
 #______________________________________________________________________________
 # Simple Data Structures: infinity, Dict, Struct
-                
+
 infinity = 1.0e400
 
-def Dict(**entries):  
-    """Create a dict out of the argument=value arguments. 
+def Dict(**entries):
+    """Create a dict out of the argument=value arguments.
     >>> Dict(a=1, b=2, c=3)
     {'a': 1, 'c': 3, 'b': 2}
     """
@@ -233,12 +234,12 @@ class DefaultDict(dict):
     def __getitem__(self, key):
         if key in self: return self.get(key)
         return self.setdefault(key, copy.deepcopy(self.default))
-    
+
     def __copy__(self):
         copy = DefaultDict(self.default)
         copy.update(self)
         return copy
-    
+
 class Struct:
     """Create an instance with argument=value slots.
     This is for making a lightweight object whose class doesn't matter."""
@@ -263,10 +264,10 @@ def update(x, **entries):
     Struct(a=10, b=20)
     """
     if isinstance(x, dict):
-        x.update(entries)   
+        x.update(entries)
     else:
-        x.__dict__.update(entries) 
-    return x 
+        x.__dict__.update(entries)
+    return x
 
 #______________________________________________________________________________
 # Functions on Sequences (mostly inspired by Common Lisp)
@@ -291,7 +292,7 @@ def unique(seq):
     [1, 2, 3]
     """
     return list(set(seq))
-    
+
 def product(numbers):
     """Return the product of the numbers.
     >>> product([1,2,3,4])
@@ -306,7 +307,7 @@ def count_if(predicate, seq):
     """
     f = lambda count, x: count + (not not predicate(x))
     return reduce(f, seq, 0)
-    
+
 def find_if(predicate, seq):
     """If there is an element of seq that satisfies predicate; return it.
     >>> find_if(callable, [3, min, max])
@@ -338,7 +339,7 @@ def some(predicate, seq):
     for x in seq:
         px = predicate(x)
         if  px: return px
-    return False   
+    return False
 
 def isin(elt, seq):
     """Like (elt in seq), but compares with is, not ==.
@@ -504,12 +505,12 @@ def num_or_str(x):
     """
     if isnumber(x): return x
     try:
-        return int(x) 
+        return int(x)
     except ValueError:
         try:
-            return float(x) 
+            return float(x)
         except ValueError:
-                return str(x).strip() 
+                return str(x).strip()
 
 def normalize(numbers, total=1.0):
     """Multiply each number by a constant such that the sum is 1.0 (or total).
@@ -531,12 +532,16 @@ def turn_right(orientation):
 def turn_left(orientation):
     return orientations[(orientations.index(orientation)+1) % len(orientations)]
 
-def distance((ax, ay), (bx, by)):
+def distance(a,b):
     "The distance between two (x, y) points."
+    (ax, ay) = a
+    (bx, by) = b
     return math.hypot((ax - bx), (ay - by))
 
-def distance2((ax, ay), (bx, by)):
+def distance2(a,b):
     "The square of the distance between two (x, y) points."
+    (ax, ay) = a
+    (bx, by) = b
     return (ax - bx)**2 + (ay - by)**2
 
 def clip(vector, lowest, highest):
@@ -550,7 +555,7 @@ def clip(vector, lowest, highest):
 #______________________________________________________________________________
 # Misc Functions
 
-def printf(format, *args): 
+def printf(format, *args):
     """Format args with the first argument as format string, and write.
     Return the last arg, or format itself if there are no args."""
     sys.stdout.write(str(format) % args)
@@ -560,7 +565,7 @@ def caller(n=1):
     """Return the name of the calling function n levels up in the frame stack.
     >>> caller(0)
     'caller'
-    >>> def f(): 
+    >>> def f():
     ...     return caller()
     >>> f()
     'f'
@@ -627,13 +632,13 @@ def print_table(table, header=None, sep=' ', numfmt='%g'):
     if header:
         table = [header] + table
     table = [[if_(isnumber(x), lambda: numfmt % x, x)  for x in row]
-             for row in table]    
+             for row in table]
     maxlen = lambda seq: max(map(len, seq))
     sizes = map(maxlen, zip(*[map(str, row) for row in table]))
     for row in table:
         for (j, size, x) in zip(justs, sizes, row):
-            print getattr(str(x), j)(size), sep,
-        print
+            print(getattr(str(x), j)(size), sep,)
+        print()
 
 def AIMAFile(components, mode='r'):
     "Open a file based at the AIMA root directory."
