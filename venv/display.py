@@ -5,6 +5,7 @@ import PIL.ImageTk as itk
 
 from objects import Object
 from utils import *
+from agents import Agent
 
 # Debug flag for the Icon class
 USE_ICON_CLASS = False
@@ -94,7 +95,7 @@ class EnvFrame(tk.Frame):
 
         # Canvas for drawing on
         self.canvas = tk.Canvas(self, width=(cellwidth + 1) * env.width,
-                                height=(cellwidth + 1) * env.height, background="white")
+                                height=(cellwidth + 1) * env.height, background='white')
 
         hbar = tk.Scrollbar(self, orient=tk.HORIZONTAL)
         hbar.pack(side=tk.BOTTOM, fill=tk.X)
@@ -108,9 +109,9 @@ class EnvFrame(tk.Frame):
 
 
         # Canvas click handlers (1 = left, 2 = middle, 3 = right)
-        self.canvas.bind('<Button-1>', self.left)  ## What should this do?
-        self.canvas.bind('<Button-2>', self.edit_objects)
-        self.canvas.bind('<Button-3>', self.edit_objects)
+        self.canvas.bind('<Button-1>', self.left_click)  ## What should this do?
+        self.canvas.bind('<Button-2>', self.middle_click)
+        self.canvas.bind('<Button-3>', self.right_click)
         if cellwidth:
             c = self.canvas
             for i in range(1, env.width + 1):
@@ -159,15 +160,31 @@ class EnvFrame(tk.Frame):
         print('stop')
         self.running = 0
 
-    def left(self, event):
-        loc = (event.x / (self.cellwidth + 1), event.y / (self.cellwidth + 1))
+    def left_click(self, event):
+        loc = (int(event.x / (self.cellwidth + 1)), int(event.y / (self.cellwidth + 1)))
         objs = self.env.find_at(Object, loc)
-        if not objs: objs = 'Nothing'
-        print('Cell (%s, %s) contains %s' %  (loc[0], loc[1], objs))
+        if not objs:
+            obj_string = 'Nothing'
+        else:
+            obj_string = str([str(o)[:len(str(o))-1] + ' performance=%s>' % o.performance if hasattr(o, 'performance') else str(o) for o in objs])
+        print('Cell (%s, %s) contains %s' %  (loc[0], loc[1], obj_string))
 
-    def edit_objects(self, event):
-        '''Choose an object within radius and edit its fields.'''
+    def middle_click(self, event):
         pass
+
+    def right_click(self, event):
+        loc = (int(event.x / (self.cellwidth + 1)), int(event.y / (self.cellwidth + 1)))
+        agts = self.env.find_at(Agent, loc)
+        if agts:
+            for a in agts:
+                hld = ''
+                if hasattr(a, 'holding') and a.holding:
+                    hld = a.holding
+                else:
+                    hld = 'Nothing'
+                print('%s in Cell (%s, %s) is holding %s' % (a, loc[0], loc[1], hld))
+        else:
+            print('Cell (%s, %s) contains %s' % (loc[0], loc[1], 'No Agents'))
 
     def object_to_image(self,obj):
         if hasattr(obj, 'heading'):
@@ -175,7 +192,7 @@ class EnvFrame(tk.Frame):
         else:
             return self.file2image[self.class2file.get(getattr(obj, '__name__', obj.__class__.__name__),'')]
 
-    def DisplayObject(self, obj):
+    def display_object(self, obj):
         if USE_ICON_CLASS:
             obj.icon = self.NewIcon(obj)
         else:
@@ -183,16 +200,19 @@ class EnvFrame(tk.Frame):
             obj.id_image = None
             obj.canvas = self.canvas
 
-            old_destroy = obj.destroy
 
-            def destroy_images(self):
-                old_destroy()
-                self.canvas.delete(self.image)
-                self.canvas.delete(self.id_image)
-                self.image = None
+            # replace obj.destroy() method to include image destruction as well
+            old_destroy = obj.destroy               # save old obj.destroy() method
+
+            def destroy_with_images(self):               # define a new obj.destroy() method
+                old_destroy()                       # first run old obj.destroy()
+                self.canvas.delete(self.image)      # delete the image
+                self.canvas.delete(self.id_image)   # delete the id
+                self.image = None                   # clear objects image and id_image
                 self.id_image = None
 
-            obj.destroy = MethodType(destroy_images,obj)
+            # use MethodType to add a new object method override the existing object's destroy method
+            obj.destroy = MethodType(destroy_with_images,obj)
         return obj
 
 
@@ -208,13 +228,13 @@ class EnvFrame(tk.Frame):
         if obj.id:
             imgs.append(self.canvas.create_text((obj.location[0] + ID_X_OFFSET) * (self.cellwidth + 1),
                                                (obj.location[1] + ID_Y_OFFSET) * (self.cellwidth + 1),
-                                               text=obj.id, anchor='nw', font=("Helvetica", int(self.cellwidth / 5.0)),
+                                               text=obj.id, anchor='nw', font=('Helvetica', int(self.cellwidth / 5.0)),
                                                tag=getattr(obj, '__name__', obj.__class__.__name__)))
         return Icon(obj, self, imgs)
 
     def configure_display(self):
         for obj in self.env.objects:
-            obj = self.DisplayObject(obj)
+            obj = self.display_object(obj)
         self.update_display()
 
     def update_display(self):
@@ -224,7 +244,7 @@ class EnvFrame(tk.Frame):
         else:
             for obj in self.env.objects:
                 if not(hasattr(obj,'image') and hasattr(obj,'id_image')):
-                    self.DisplayObject(obj)
+                    self.display_object(obj)
                 if hasattr(obj, 'image') and obj.image:
                     if isinstance(obj.location, tuple):
                         self.canvas.itemconfig(obj.image, image=self.object_to_image(obj))
@@ -249,7 +269,7 @@ class EnvFrame(tk.Frame):
                 else:
                     obj.id_image = self.canvas.create_text((obj.location[0] + ID_X_OFFSET) * (self.cellwidth + 1),
                                                             (obj.location[1] + ID_Y_OFFSET) * (self.cellwidth + 1),
-                                                            text=obj.id, anchor='nw', font=("Helvetica", int(self.cellwidth/5.0)),
+                                                            text=obj.id, anchor='nw', font=('Helvetica', int(self.cellwidth/5.0)),
                                                             tag=getattr(obj, '__name__', obj.__class__.__name__))
 
             self.canvas.tag_lower('Dirt')
