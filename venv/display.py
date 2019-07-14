@@ -64,13 +64,6 @@ if USE_ICON_CLASS:  # If we are using the Icon class, run the code below
                 self.move_to(self.parent.location)
             else:
                 self.hide()
-else:
-    def destroy_images(self):
-        self.canvas.delete(self.image)
-        self.canvas.delete(self.id_image)
-        self.image = None
-        self.id_image = None
-
 
 
 class EnvFrame(tk.Frame):
@@ -93,7 +86,7 @@ class EnvFrame(tk.Frame):
                          ('Stop [ ]', self.stop)]:
             tk.Button(toolbar, text=txt, command=cmd).pack(side='left')
         tk.Label(toolbar, text='Delay').pack(side='left')
-        scale = tk.Scale(toolbar, orient='h', from_=0.0, to=10, resolution=0.1, length=300,
+        scale = tk.Scale(toolbar, orient='h', from_=0.0, to=3.0, resolution=0.1, length=300,
                          command=lambda d: setattr(self, 'delay', d))
         scale.set(self.delay)
         scale.pack(side='left')
@@ -189,8 +182,20 @@ class EnvFrame(tk.Frame):
             obj.image = None
             obj.id_image = None
             obj.canvas = self.canvas
-            obj.destroy_images = MethodType(destroy_images,obj)
+
+            old_destroy = obj.destroy
+
+            def destroy_images(self):
+                old_destroy()
+                self.canvas.delete(self.image)
+                self.canvas.delete(self.id_image)
+                self.image = None
+                self.id_image = None
+
+            obj.destroy = MethodType(destroy_images,obj)
         return obj
+
+
 
     def NewIcon(self, obj):
         # lookup default image and add it to the list

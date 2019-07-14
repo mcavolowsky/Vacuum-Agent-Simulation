@@ -9,6 +9,7 @@ http://aima.cs.berkeley.edu/python/agents.py
 import inspect
 from utils import *
 import random, copy
+from functools import partial
 
 # import my files
 #import agents as ag
@@ -145,6 +146,9 @@ class XYEnvironment(Environment):
         "Return all objects exactly at a given location."
         return [obj for obj in self.objects if obj.location == location]
 
+    def find_at(self, cls, loc):
+        return [o for o in self.objects_at(loc) if isinstance(o, cls)]
+
     def objects_near(self, location, radius):
         "Return all objects within radius of location."
         radius2 = radius * radius # square radius instead of taking the square root for faster processing
@@ -183,6 +187,7 @@ class XYEnvironment(Environment):
                     # when to remove if from the display.  This may be useful in other ways, if
                     # the object needs to know who it's holder is
                     o.location = agent
+                    if isinstance(o,Dirt): agent.performance += 100
         elif action == 'Release':
             # drop an objects being held by the Agent.
             if agent.holding:
@@ -213,14 +218,13 @@ class XYEnvironment(Environment):
 
     def add_object(self, obj, location=(1, 1)):
         Environment.add_object(self, obj, location)
+
+        if isinstance(obj, Agent): obj.bump = False
+
         obj.holding = []
         obj.held = None
-        return obj
 
-    def add_agent(self, agent, location=(1,1)):
-        agent.bump = False
-        self.add_object(agent, location)
-        return agent
+        return obj
 
     def add_walls(self):
         "Put walls around the entire perimeter of the grid."
@@ -264,9 +268,6 @@ class VacuumEnvironment(XYEnvironment):
         agent.performance -= 1
         XYEnvironment.execute_action(self, agent, action)
 
-    def find_at(self, cls, loc):
-        return [o for o in self.objects_at(loc) if isinstance(o, cls)]
-
     def exogenous_dirt(self):
         if random.uniform(0,1)<1.0:
             loc = (random.randrange(self.width), random.randrange(self.height))
@@ -280,7 +281,7 @@ class VacuumEnvironment(XYEnvironment):
         if fs:
             for f in fs:
                 if f.t == 0:
-                    f.destroy_images()
+                    f.destroy()
                     self.objects.remove(f)
                 else:
                     f.t -= 1
@@ -315,23 +316,25 @@ def compare_agents(EnvFactory, AgentFactories, n=10, steps=1000):
 def test_agent(AgentFactory, steps, envs):
     "Return the mean score of running an agent in each of the envs, for steps"
     total = 0
+    i = 0
     for env in envs:
-        agent = AgentFactory()
-        env.add_object(agent)
-        env.run(steps)
-        total += agent.performance
+        i+=1
+        with Timer(name='Simulation Timer - Agent=%s' % i, format='%.4f'):
+            agent = AgentFactory()
+            env.add_object(agent)
+            env.run(steps)
+            total += agent.performance
     return float(total)/len(envs)
 
 #______________________________________________________________________________
 
 def test1():
-
     e = VacuumEnvironment(width=20,height=20)
     ef = EnvFrame(e,cellwidth=30)
 
     # Create agents on left wall
     for i in range(1,19):
-        e.add_agent(NewRandomReflexAgent(debug=False),location=(1,i)).id = i
+        e.add_object(NewRandomReflexAgent(debug=False),location=(1,i)).id = i
 
     # Generate walls with dead cells in the center
     if True:
@@ -362,8 +365,13 @@ def test1():
     ef.run()
     ef.mainloop()
 
+def test2():
+    EnvFactory = partial(VacuumEnvironment,width=20,height=20)
+    AgentFactory = partial(NewRandomReflexAgent, debug=False)
+    print(compare_agents(EnvFactory, [AgentFactory]*2, n=10, steps=100))
+
 def main():
-    test1()
+    test2()
 
 if __name__ == "__main__":
     # execute only if run as a script

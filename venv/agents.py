@@ -25,6 +25,9 @@ class Agent(Object):
 
         self.program = program
         self.alive = True
+
+        self.performance = 0
+
     blocker = True
 
 def DebugAgent(agent):
