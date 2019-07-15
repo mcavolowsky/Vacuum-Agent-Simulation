@@ -7,9 +7,6 @@ from objects import Object
 from utils import *
 from agents import Agent
 
-# Debug flag for the Icon class
-USE_ICON_CLASS = False
-
 # Relative (%) offset values for image positioning from upper left corner of the cell
 IMAGE_X_OFFSET = 0.5
 IMAGE_Y_OFFSET = 0.5
@@ -24,48 +21,46 @@ ID_Y_OFFSET = 0.0
 
 #______________________________________________________________________________
 
-if USE_ICON_CLASS:  # If we are using the Icon class, run the code below
-    class Icon():
-        def __repr__(self): # Define the string representation of the class (this is to avoid importing the Object class
-            return '<%s>' % getattr(self, '__name__', self.__class__.__name__)
+class Icon():
+    def __repr__(self): # Define the string representation of the class (this is to avoid importing the Object class
+        return '<%s>' % getattr(self, '__name__', self.__class__.__name__)
 
-        def __init__(self, parent, ef, images):
-            self.parent = parent        # parent object
-            self.ef = ef
-            self.images = images
+    def __init__(self, parent, ef, images = {}):
+        self.parent = parent        # parent object
+        self.ef = ef
+        self.images = images
 
-        def object_to_image(self):
-            if hasattr(self.parent, 'heading'):
-                return self.ef.file2image[self.ef.class2file.get(getattr(self.parent, '__name__', self.parent.__class__.__name__),'') % self.ef.orientation[self.parent.heading]]
-            else:
-                return self.ef.file2image[self.ef.class2file.get(getattr(self.parent, '__name__', self.parent.__class__.__name__),'')]
+    def object_to_image(self):
+        if hasattr(self.parent, 'heading'):
+            return self.ef.file2image[self.ef.class2file.get(getattr(self.parent, '__name__', self.parent.__class__.__name__),'') % self.ef.orientation[self.parent.heading]]
+        else:
+            return self.ef.file2image[self.ef.class2file.get(getattr(self.parent, '__name__', self.parent.__class__.__name__),'')]
 
-        def move_to(self, newLocation):
-            dx = newLocation[0] - self.parent.location[0]
-            dy = newLocation[1] - self.parent.location[1]
-            for img in self.images:
-                pass
+    def move_to(self, newLocation):
+        old_loc = self.ef.canvas.coords(self.images['image'])
+        dx = (self.ef.cellwidth + 1) * (newLocation[0] - int(old_loc[0]/(self.ef.cellwidth+1)))
+        dy = (self.ef.cellwidth + 1) * (newLocation[1] - int(old_loc[1]/(self.ef.cellwidth+1)))
+        for img in self.images.values():
+            self.ef.canvas.move(img, dx, dy)
 
-        def rotate(self):
-            # THIS NEEDS FIXING
-            #self.ef.canvas.itemconfig(self.parent.image, image=self.ef.object_to_image(self.parent))
-            pass
+    def rotate(self):
+        if isinstance(self.parent, Agent): self.ef.canvas.itemconfig(self.parent.icon.images['image'], image=self.ef.object_to_image(self.parent))
 
-        def hide(self):
-            for img in images:
-                self.ef.canvas.itemconfig(img, state='hidden')
+    def hide(self):
+        for img in self.images.values():
+            self.ef.canvas.itemconfig(img, state='hidden')
 
-        def destroy_images(self):
-            print('implement me')
-            pass
+    def destroy_images(self):
+        for imgname in self.images.keys():
+            self.ef.canvas.delete(self.images[imgname])
+        self.images = {}
 
-        def update(self):
-            if isinstance(self.parent.location, tuple):
-                self.rotate()
-                self.move_to(self.parent.location)
-            else:
-                self.hide()
-
+    def update(self):
+        if isinstance(self.parent.location, tuple):
+            self.rotate()
+            self.move_to(self.parent.location)
+        else:
+            self.hide()
 
 class EnvFrame(tk.Frame):
     def __init__(self, env, root = tk.Tk(), title='Robot Vacuum Simulation', cellwidth=50, n=10):
@@ -193,40 +188,29 @@ class EnvFrame(tk.Frame):
             return self.file2image[self.class2file.get(getattr(obj, '__name__', obj.__class__.__name__),'')]
 
     def display_object(self, obj):
-        if USE_ICON_CLASS:
-            obj.icon = self.NewIcon(obj)
-        else:
-            obj.image = None
-            obj.id_image = None
-            obj.canvas = self.canvas
+        obj.icon = self.NewIcon(obj)
 
+        old_destroy = obj.destroy  # save old obj.destroy() method
 
-            # replace obj.destroy() method to include image destruction as well
-            old_destroy = obj.destroy               # save old obj.destroy() method
+        def destroy_with_images(self):  # define a new obj.destroy() method
+            old_destroy()  # first run old obj.destroy()
+            obj.icon.destroy_images()
 
-            def destroy_with_images(self):               # define a new obj.destroy() method
-                old_destroy()                       # first run old obj.destroy()
-                self.canvas.delete(self.image)      # delete the image
-                self.canvas.delete(self.id_image)   # delete the id
-                self.image = None                   # clear objects image and id_image
-                self.id_image = None
-
-            # use MethodType to add a new object method override the existing object's destroy method
-            obj.destroy = MethodType(destroy_with_images,obj)
+        obj.destroy = MethodType(destroy_with_images, obj)
         return obj
 
 
 
     def NewIcon(self, obj):
         # lookup default image and add it to the list
-        imgs = []
-        imgs.append(self.canvas.create_image(
+        imgs = {}
+        imgs['image'] = (self.canvas.create_image(
             (obj.location[0] + (IMAGE_X_OFFSET + (obj.id != '') * IMAGEID_X_OFFSET)) * (self.cellwidth + 1),
             (obj.location[1] + (IMAGE_Y_OFFSET + (obj.id != '') * IMAGEID_Y_OFFSET)) * (self.cellwidth + 1),
             image=self.object_to_image(obj), tag=getattr(obj, '__name__', obj.__class__.__name__)))
 
         if obj.id:
-            imgs.append(self.canvas.create_text((obj.location[0] + ID_X_OFFSET) * (self.cellwidth + 1),
+            imgs['id'] = (self.canvas.create_text((obj.location[0] + ID_X_OFFSET) * (self.cellwidth + 1),
                                                (obj.location[1] + ID_Y_OFFSET) * (self.cellwidth + 1),
                                                text=obj.id, anchor='nw', font=('Helvetica', int(self.cellwidth / 5.0)),
                                                tag=getattr(obj, '__name__', obj.__class__.__name__)))
@@ -238,39 +222,11 @@ class EnvFrame(tk.Frame):
         self.update_display()
 
     def update_display(self):
-        if USE_ICON_CLASS:
-            for obj in self.env.objects:
+        for obj in self.env.objects:
+            if hasattr(obj, 'icon') and obj.icon:
                 obj.icon.update()
-        else:
-            for obj in self.env.objects:
-                if not(hasattr(obj,'image') and hasattr(obj,'id_image')):
-                    self.display_object(obj)
-                if hasattr(obj, 'image') and obj.image:
-                    if isinstance(obj.location, tuple):
-                        self.canvas.itemconfig(obj.image, image=self.object_to_image(obj))
+            else:
+                self.display_object(obj)
 
-                        old_loc = self.canvas.coords(obj.image)
-                        self.canvas.move(obj.image, (obj.location[0]+(IMAGE_X_OFFSET + (obj.id!='')*IMAGEID_X_OFFSET))*(self.cellwidth + 1)-old_loc[0],
-                                                        (obj.location[1]+IMAGE_Y_OFFSET + (obj.id!='')*IMAGEID_Y_OFFSET)*(self.cellwidth + 1)-old_loc[1])
-                    else:
-                        self.canvas.itemconfig(obj.image, state='hidden')
-                else:
-                    obj.image = self.canvas.create_image((obj.location[0] + (IMAGE_X_OFFSET + (obj.id!='')*IMAGEID_X_OFFSET)) * (self.cellwidth + 1),
-                                                            (obj.location[1] + (IMAGE_Y_OFFSET + (obj.id!='')*IMAGEID_Y_OFFSET)) * (self.cellwidth + 1),
-                                                            image=self.object_to_image(obj), tag=getattr(obj, '__name__', obj.__class__.__name__))
-
-                if hasattr(obj, 'id_image') and obj.id_image:
-                    if isinstance(obj.location, tuple):
-                        old_loc = self.canvas.coords(obj.id_image)
-                        self.canvas.move(obj.id_image, (obj.location[0] + ID_X_OFFSET) * (self.cellwidth + 1) - old_loc[0],
-                                         (obj.location[1] + ID_Y_OFFSET) * (self.cellwidth + 1) - old_loc[1])
-                    else:
-                        self.canvas.itemconfig(obj.id_image, state='hidden')
-                else:
-                    obj.id_image = self.canvas.create_text((obj.location[0] + ID_X_OFFSET) * (self.cellwidth + 1),
-                                                            (obj.location[1] + ID_Y_OFFSET) * (self.cellwidth + 1),
-                                                            text=obj.id, anchor='nw', font=('Helvetica', int(self.cellwidth/5.0)),
-                                                            tag=getattr(obj, '__name__', obj.__class__.__name__))
-
-            self.canvas.tag_lower('Dirt')
+        self.canvas.tag_lower('Dirt')
 #______________________________________________________________________________
