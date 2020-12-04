@@ -29,6 +29,7 @@ class Icon():
         self.parent = parent        # parent object
         self.ef = ef
         self.images = images
+        # TODO: Implement offsets in the icon class
 
     def object_to_image(self):
         if hasattr(self.parent, 'heading'):
