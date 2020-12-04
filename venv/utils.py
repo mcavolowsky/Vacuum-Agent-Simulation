@@ -1,582 +1,440 @@
-"""Provide some widely useful utilities. Safe for "from utils import *".
+"""Provides some utilities widely used by other modules"""
 
-"""
+import bisect
+import collections
+import collections.abc
+import heapq
+import operator
+import os.path
+import random
+import math
+import functools
+import numpy as np
+from itertools import chain, combinations
+from scipy.stats import sem, t
+from scipy import mean
 
-from __future__ import generators
-import operator, math, random, copy, sys, os.path, bisect
-
-#______________________________________________________________________________
-# Compatibility with Python 2.2 and 2.3
-
-# The AIMA code is designed to run in Python 2.2 and up (at some point,
-# support for 2.2 may go away; 2.2 was released in 2001, and so is over
-# 3 years old). The first part of this file brings you up to 2.4
-# compatibility if you are running in Python 2.2 or 2.3:
-
-
-#try: bool, True, False ## Introduced in 2.3
-#except NameError:
-#    class bool(int):
-#        "Simple implementation of Booleans, as in PEP 285"
-#        def __init__(self, val): self.val = val
-#        def __int__(self): return self.val
-#        def __repr__(self): return ('False', 'True')[self.val]
-#
-#    True, False = bool(1), bool(0)
-
-try: sum ## Introduced in 2.3
-except NameError:
-    def sum(seq, start=0):
-        """Sum the elements of seq.
-        >>> sum([1, 2, 3])
-        6
-        """
-        return reduce(operator.add, seq, start)
-
-try: enumerate  ## Introduced in 2.3
-except NameError:
-    def enumerate(collection):
-        """Return an iterator that enumerates pairs of (i, c[i]). PEP 279.
-        >>> list(enumerate('abc'))
-        [(0, 'a'), (1, 'b'), (2, 'c')]
-        """
-        ## Copied from PEP 279
-        i = 0
-        it = iter(collection)
-        while 1:
-            yield (i, it.next())
-            i += 1
+# ______________________________________________________________________________
+# Functions on Sequences and Iterables
 
 
-try: reversed ## Introduced in 2.4
-except NameError:
-    def reversed(seq):
-        """Iterate over x in reverse order.
-        >>> list(reversed([1,2,3]))
-        [3, 2, 1]
-        """
-        if hasattr(seq, 'keys'):
-            raise ValueError("mappings do not support reverse iteration")
-        i = len(seq)
-        while i > 0:
-            i -= 1
-            yield seq[i]
-
-
-try: sorted ## Introduced in 2.4
-except NameError:
-    def sorted(seq, cmp=None, key=None, reverse=False):
-        """Copy seq and sort and return it.
-        >>> sorted([3, 1, 2])
-        [1, 2, 3]
-        """
-        seq2 = copy.copy(seq)
-        if key:
-            if cmp == None:
-                cmp = __builtins__.cmp
-            seq2.sort(lambda x,y: cmp(key(x), key(y)))
-        else:
-            if cmp == None:
-                seq2.sort()
-            else:
-                seq2.sort(cmp)
-        if reverse:
-            seq2.reverse()
-        return seq2
-
-try:
-    set, frozenset ## set builtin introduced in 2.4
-except NameError:
-    try:
-        import sets ## sets module introduced in 2.3
-        set, frozenset = sets.Set, sets.ImmutableSet
-    except (NameError, ImportError):
-        class BaseSet:
-            "set type (see http://docs.python.org/lib/types-set.html)"
-
-
-            def __init__(self, elements=[]):
-                self.dict = {}
-                for e in elements:
-                    self.dict[e] = 1
-
-            def __len__(self):
-                return len(self.dict)
-
-            def __iter__(self):
-                for e in self.dict:
-                    yield e
-
-            def __contains__(self, element):
-                return element in self.dict
-
-            def issubset(self, other):
-                for e in self.dict.keys():
-                    if e not in other:
-                        return False
-                return True
-
-            def issuperset(self, other):
-                for e in other:
-                    if e not in self:
-                        return False
-                return True
-
-
-            def union(self, other):
-                return type(self)(list(self) + list(other))
-
-            def intersection(self, other):
-                return type(self)([e for e in self.dict if e in other])
-
-            def difference(self, other):
-                return type(self)([e for e in self.dict if e not in other])
-
-            def symmetric_difference(self, other):
-                return type(self)([e for e in self.dict if e not in other] +
-                                  [e for e in other if e not in self.dict])
-
-            def copy(self):
-                return type(self)(self.dict)
-
-            def __repr__(self):
-                elements = ", ".join(map(str, self.dict))
-                return "%s([%s])" % (type(self).__name__, elements)
-
-            __le__ = issubset
-            __ge__ = issuperset
-            __or__ = union
-            __and__ = intersection
-            __sub__ = difference
-            __xor__ = symmetric_difference
-
-        class frozenset(BaseSet):
-            "A frozenset is a BaseSet that has a hash value and is immutable."
-
-            def __init__(self, elements=[]):
-                BaseSet.__init__(elements)
-                self.hash = 0
-                for e in self:
-                    self.hash |= hash(e)
-
-            def __hash__(self):
-                return self.hash
-
-        class set(BaseSet):
-            "A set is a BaseSet that does not have a hash, but is mutable."
-
-            def update(self, other):
-                for e in other:
-                    self.add(e)
-                return self
-
-            def intersection_update(self, other):
-                for e in self.dict.keys():
-                    if e not in other:
-                        self.remove(e)
-                return self
-
-            def difference_update(self, other):
-                for e in self.dict.keys():
-                    if e in other:
-                        self.remove(e)
-                return self
-
-            def symmetric_difference_update(self, other):
-                to_remove1 = [e for e in self.dict if e in other]
-                to_remove2 = [e for e in other if e in self.dict]
-                self.difference_update(to_remove1)
-                self.difference_update(to_remove2)
-                return self
-
-            def add(self, element):
-                self.dict[element] = 1
-
-            def remove(self, element):
-                del self.dict[element]
-
-            def discard(self, element):
-                if element in self.dict:
-                    del self.dict[element]
-
-            def pop(self):
-                key, val = self.dict.popitem()
-                return key
-
-            def clear(self):
-                self.dict.clear()
-
-            __ior__ = update
-            __iand__ = intersection_update
-            __isub__ = difference_update
-            __ixor__ = symmetric_difference_update
-
-
-
-
-#______________________________________________________________________________
-# Simple Data Structures: infinity, Dict, Struct
-
-infinity = 1.0e400
-
-def Dict(**entries):
-    """Create a dict out of the argument=value arguments.
-    >>> Dict(a=1, b=2, c=3)
-    {'a': 1, 'c': 3, 'b': 2}
-    """
-    return entries
-
-class DefaultDict(dict):
-    """Dictionary with a default value for unknown keys."""
-    def __init__(self, default):
-        self.default = default
-
-    def __getitem__(self, key):
-        if key in self: return self.get(key)
-        return self.setdefault(key, copy.deepcopy(self.default))
-
-    def __copy__(self):
-        copy = DefaultDict(self.default)
-        copy.update(self)
-        return copy
-
-class Struct:
-    """Create an instance with argument=value slots.
-    This is for making a lightweight object whose class doesn't matter."""
-    def __init__(self, **entries):
-        self.__dict__.update(entries)
-
-    def __cmp__(self, other):
-        if isinstance(other, Struct):
-            return cmp(self.__dict__, other.__dict__)
-        else:
-            return cmp(self.__dict__, other)
-
-    def __repr__(self):
-        args = ['%s=%s' % (k, repr(v)) for (k, v) in vars(self).items()]
-        return 'Struct(%s)' % ', '.join(args)
-
-def update(x, **entries):
-    """Update a dict; or an object with slots; according to entries.
-    >>> update({'a': 1}, a=10, b=20)
-    {'a': 10, 'b': 20}
-    >>> update(Struct(a=1), a=10, b=20)
-    Struct(a=10, b=20)
-    """
-    if isinstance(x, dict):
-        x.update(entries)
-    else:
-        x.__dict__.update(entries)
-    return x
-
-#______________________________________________________________________________
-# Functions on Sequences (mostly inspired by Common Lisp)
-# NOTE: Sequence functions (count_if, find_if, every, some) take function
-# argument first (like reduce, filter, and map).
+def sequence(iterable):
+    """Converts iterable to sequence, if it is not already one."""
+    return (iterable if isinstance(iterable, collections.abc.Sequence)
+        else tuple([iterable]))
 
 def removeall(item, seq):
-    """Return a copy of seq (or string) with all occurences of item removed.
-    >>> removeall(3, [1, 2, 3, 3, 2, 1, 3])
-    [1, 2, 2, 1]
-    >>> removeall(4, [1, 2, 3])
-    [1, 2, 3]
-    """
+    """Return a copy of seq (or string) with all occurrences of item removed."""
     if isinstance(seq, str):
-      return seq.replace(item, '')
+        return seq.replace(item, '')
     else:
-      return [x for x in seq if x != item]
+        return [x for x in seq if x != item]
+
 
 def unique(seq):
-    """Remove duplicate elements from seq. Assumes hashable elements.
-    >>> unique([1, 2, 3, 2, 1])
-    [1, 2, 3]
-    """
+    """Remove duplicate elements from seq. Assumes hashable elements."""
     return list(set(seq))
 
+
+def count(seq):
+    """Count the number of items in sequence that are interpreted as true."""
+    return sum(map(bool, seq))
+
+def multimap(items):
+    """Given (key, val) pairs, return {key: [val, ....], ...}."""
+    result = collections.defaultdict(list)
+    for (key, val) in items:
+        result[key].append(val)
+    return dict(result)
+
+def multimap_items(mmap):
+    """Yield all (key, val) pairs stored in the multimap."""
+    for (key, vals) in mmap.items():
+        for val in vals:
+            yield key, val
+
 def product(numbers):
-    """Return the product of the numbers.
-    >>> product([1,2,3,4])
-    24
-    """
-    return reduce(operator.mul, numbers, 1)
-
-def count_if(predicate, seq):
-    """Count the number of elements of seq for which the predicate is true.
-    >>> count_if(callable, [42, None, max, min])
-    2
-    """
-    f = lambda count, x: count + (not not predicate(x))
-    return reduce(f, seq, 0)
-
-def find_if(predicate, seq):
-    """If there is an element of seq that satisfies predicate; return it.
-    >>> find_if(callable, [3, min, max])
-    <built-in function min>
-    >>> find_if(callable, [1, 2, 3])
-    """
-    for x in seq:
-        if predicate(x): return x
-    return None
-
-def every(predicate, seq):
-    """True if every element of seq satisfies predicate.
-    >>> every(callable, [min, max])
-    1
-    >>> every(callable, [min, 3])
-    0
-    """
-    for x in seq:
-        if not predicate(x): return False
-    return True
-
-def some(predicate, seq):
-    """If some element x of seq satisfies predicate(x), return predicate(x).
-    >>> some(callable, [min, 3])
-    1
-    >>> some(callable, [2, 3])
-    0
-    """
-    for x in seq:
-        px = predicate(x)
-        if  px: return px
-    return False
-
-def isin(elt, seq):
-    """Like (elt in seq), but compares with is, not ==.
-    >>> e = []; isin(e, [1, e, 3])
-    True
-    >>> isin(e, [1, [], 3])
-    False
-    """
-    for x in seq:
-        if elt is x: return True
-    return False
-
-#______________________________________________________________________________
-# Functions on sequences of numbers
-# NOTE: these take the sequence argument first, like min and max,
-# and like standard math notation: \sigma (i = 1..n) fn(i)
-# A lot of programing is finding the best value that satisfies some condition;
-# so there are three versions of argmin/argmax, depending on what you want to
-# do with ties: return the first one, return them all, or pick at random.
+    """Return the product of the numbers, e.g. product([2, 3, 10]) == 60"""
+    result = 1
+    for x in numbers:
+        result *= x
+    return result
 
 
-def argmin(seq, fn):
-    """Return an element with lowest fn(seq[i]) score; tie goes to first one.
-    >>> argmin(['one', 'to', 'three'], len)
-    'to'
-    """
-    best = seq[0]; best_score = fn(best)
-    for x in seq:
-        x_score = fn(x)
-        if x_score < best_score:
-            best, best_score = x, x_score
-    return best
+def first(iterable, default=None):
+    """Return the first element of an iterable; or default."""
+    return next(iter(iterable), default)
 
-def argmin_list(seq, fn):
-    """Return a list of elements of seq[i] with the lowest fn(seq[i]) scores.
-    >>> argmin_list(['one', 'to', 'three', 'or'], len)
-    ['to', 'or']
-    """
-    best_score, best = fn(seq[0]), []
-    for x in seq:
-        x_score = fn(x)
-        if x_score < best_score:
-            best, best_score = [x], x_score
-        elif x_score == best_score:
-            best.append(x)
-    return best
+def is_in(elt, seq):
+    """Similar to (elt in seq), but compares with 'is', not '=='."""
+    return any(x is elt for x in seq)
 
-def argmin_random_tie(seq, fn):
-    """Return an element with lowest fn(seq[i]) score; break ties at random.
-    Thus, for all s,f: argmin_random_tie(s, f) in argmin_list(s, f)"""
-    best_score = fn(seq[0]); n = 0
-    for x in seq:
-        x_score = fn(x)
-        if x_score < best_score:
-            best, best_score = x, x_score; n = 1
-        elif x_score == best_score:
-            n += 1
-            if random.randrange(n) == 0:
-                    best = x
-    return best
 
-def argmax(seq, fn):
-    """Return an element with highest fn(seq[i]) score; tie goes to first one.
-    >>> argmax(['one', 'to', 'three'], len)
-    'three'
-    """
-    return argmin(seq, lambda x: -fn(x))
+def mode(data):
+    """Return the most common data item. If there are ties, return any one of them."""
+    [(item, count)] = collections.Counter(data).most_common(1)
+    return item
 
-def argmax_list(seq, fn):
-    """Return a list of elements of seq[i] with the highest fn(seq[i]) scores.
-    >>> argmax_list(['one', 'three', 'seven'], len)
-    ['three', 'seven']
-    """
-    return argmin_list(seq, lambda x: -fn(x))
 
-def argmax_random_tie(seq, fn):
-    "Return an element with highest fn(seq[i]) score; break ties at random."
-    return argmin_random_tie(seq, lambda x: -fn(x))
-#______________________________________________________________________________
+def powerset(iterable):
+    """powerset([1,2,3]) --> (1,) (2,) (3,) (1,2) (1,3) (2,3) (1,2,3)"""
+    s = list(iterable)
+    return list(chain.from_iterable(combinations(s, r) for r in range(len(s) + 1)))[1:]
+
+
+# ______________________________________________________________________________
+# argmin and argmax
+
+identity = lambda x: x
+
+argmin = min
+argmax = max
+
+
+def argmin_random_tie(seq, key=identity):
+    """Return a minimum element of seq; break ties at random."""
+    return argmin(shuffled(seq), key=key)
+
+
+def argmax_random_tie(seq, key=identity):
+    """Return an element with highest fn(seq[i]) score; break ties at random."""
+    return argmax(shuffled(seq), key=key)
+
+
+def shuffled(iterable):
+    """Randomly shuffle a copy of iterable."""
+    items = list(iterable)
+    random.shuffle(items)
+    return items
+
+
+# ______________________________________________________________________________
 # Statistical and mathematical functions
+
 
 def histogram(values, mode=0, bin_function=None):
     """Return a list of (value, count) pairs, summarizing the input values.
     Sorted by increasing value, or if mode=1, by decreasing count.
     If bin_function is given, map it over values first."""
-    if bin_function: values = map(bin_function, values)
+    if bin_function:
+        values = map(bin_function, values)
+
     bins = {}
     for val in values:
         bins[val] = bins.get(val, 0) + 1
+
     if mode:
-        return sorted(bins.items(), key=lambda v: v[1], reverse=True)
+        return sorted(list(bins.items()), key=lambda x: (x[1], x[0]),
+                      reverse=True)
     else:
         return sorted(bins.items())
 
-def log2(x):
-    """Base 2 logarithm.
-    >>> log2(1024)
-    10.0
-    """
-    return math.log10(x) / math.log10(2)
-
-def mode(values):
-    """Return the most common value in the list of values.
-    >>> mode([1, 2, 3, 2])
-    2
-    """
-    return histogram(values, mode=1)[0][0]
-
-def median(values):
-    """Return the middle value, when the values are sorted.
-    If there are an odd number of elements, try to average the middle two.
-    If they can't be averaged (e.g. they are strings), choose one at random.
-    >>> median([10, 100, 11])
-    11
-    >>> median([1, 2, 3, 4])
-    2.5
-    """
-    n = len(values)
-    values = sorted(values)
-    if n % 2 == 1:
-        return values[n/2]
-    else:
-        middle2 = values[(n/2)-1:(n/2)+1]
-        try:
-            return mean(middle2)
-        except TypeError:
-            return random.choice(middle2)
-
-def mean(values):
-    """Return the arithmetic average of the values."""
-    return sum(values) / float(len(values))
-
-def stddev(values, meanval=None):
-    """The standard deviation of a set of values.
-    Pass in the mean if you already know it."""
-    if meanval == None: meanval = mean(values)
-    return math.sqrt(sum([(x - meanval)**2 for x in values]) / (len(values)-1))
 
 def dotproduct(X, Y):
-    """Return the sum of the element-wise product of vectors x and y.
-    >>> dotproduct([1, 2, 3], [1000, 100, 10])
-    1230
-    """
-    return sum([x * y for x, y in zip(X, Y)])
+    """Return the sum of the element-wise product of vectors X and Y."""
+    return sum(x * y for x, y in zip(X, Y))
+
+
+def element_wise_product(X, Y):
+    """Return vector as an element-wise product of vectors X and Y"""
+    assert len(X) == len(Y)
+    return [x * y for x, y in zip(X, Y)]
+
+def unit_vector(X):
+    dist = norm(X)
+    return [x/dist for x in X]
+
+def matrix_multiplication(X_M, *Y_M):
+    """Return a matrix as a matrix-multiplication of X_M and arbitrary number of matrices *Y_M"""
+
+    def _mat_mult(X_M, Y_M):
+        """Return a matrix as a matrix-multiplication of two matrices X_M and Y_M
+        >>> matrix_multiplication([[1, 2, 3],
+                                   [2, 3, 4]],
+                                   [[3, 4],
+                                    [1, 2],
+                                    [1, 0]])
+        [[8, 8],[13, 14]]
+        """
+        assert len(X_M[0]) == len(Y_M)
+
+        result = [[0 for i in range(len(Y_M[0]))] for j in range(len(X_M))]
+        for i in range(len(X_M)):
+            for j in range(len(Y_M[0])):
+                for k in range(len(Y_M)):
+                    result[i][j] += X_M[i][k] * Y_M[k][j]
+        return result
+
+    result = X_M
+    for Y in Y_M:
+        result = _mat_mult(result, Y)
+
+    return result
+
+
+def vector_to_diagonal(v):
+    """Converts a vector to a diagonal matrix with vector elements
+    as the diagonal elements of the matrix"""
+    diag_matrix = [[0 for i in range(len(v))] for j in range(len(v))]
+    for i in range(len(v)):
+        diag_matrix[i][i] = v[i]
+
+    return diag_matrix
+
 
 def vector_add(a, b):
-    """Component-wise addition of two vectors.
-    >>> vector_add((0, 1), (8, 9))
-    (8, 10)
-    """
+    """Component-wise addition of two vectors."""
     return tuple(map(operator.add, a, b))
 
+
+def vector_average(vectors):
+    return [math.fsum(v)/len(v) for v in zip(*vectors)]
+
+
+def scalar_vector_product(X, Y):
+    """Return vector as a product of a scalar and a vector"""
+    return [X * y for y in Y]
+
+
+def scalar_matrix_product(X, Y):
+    """Return matrix as a product of a scalar and a matrix"""
+    return [scalar_vector_product(X, y) for y in Y]
+
+
+def inverse_matrix(X):
+    """Inverse a given square matrix of size 2x2"""
+    assert len(X) == 2
+    assert len(X[0]) == 2
+    det = X[0][0] * X[1][1] - X[0][1] * X[1][0]
+    assert det != 0
+    inv_mat = scalar_matrix_product(1.0 / det, [[X[1][1], -X[0][1]], [-X[1][0], X[0][0]]])
+
+    return inv_mat
+
+
 def probability(p):
-    "Return true with probability p."
+    """Return true with probability p."""
     return p > random.uniform(0.0, 1.0)
 
-def num_or_str(x):
-    """The argument is a string; convert to a number if possible, or strip it.
-    >>> num_or_str('42')
-    42
-    >>> num_or_str(' 42x ')
-    '42x'
-    """
-    if isnumber(x): return x
+
+def weighted_sample_with_replacement(n, seq, weights):
+    """Pick n samples from seq at random, with replacement, with the
+    probability of each element in proportion to its corresponding
+    weight."""
+    sample = weighted_sampler(seq, weights)
+
+    return [sample() for _ in range(n)]
+
+
+def weighted_sampler(seq, weights):
+    """Return a random-sample function that picks from seq weighted by weights."""
+    totals = []
+    for w in weights:
+        totals.append(w + totals[-1] if totals else w)
+
+    return lambda: seq[bisect.bisect(totals, random.uniform(0, totals[-1]))]
+
+
+def weighted_choice(choices):
+    """A weighted version of random.choice"""
+    # NOTE: Shoule be replaced by random.choices if we port to Python 3.6
+
+    total = sum(w for _, w in choices)
+    r = random.uniform(0, total)
+    upto = 0
+    for c, w in choices:
+        if upto + w >= r:
+            return c, w
+        upto += w
+
+def rounder(numbers, d=4):
+    """Round a single number, or sequence of numbers, to d decimal places."""
+    if isinstance(numbers, (int, float)):
+        return round(numbers, d)
+    else:
+        constructor = type(numbers)  # Can be list, set, tuple, etc.
+        return constructor(rounder(n, d) for n in numbers)
+
+
+def num_or_str(x): # TODO: rename as `atom`
+    """The argument is a string; convert to a number if
+       possible, or strip it."""
     try:
         return int(x)
     except ValueError:
         try:
             return float(x)
         except ValueError:
-                return str(x).strip()
+            return str(x).strip()
 
-def normalize(numbers, total=1.0):
-    """Multiply each number by a constant such that the sum is 1.0 (or total).
-    >>> normalize([1,2,1])
-    [0.25, 0.5, 0.25]
+
+def normalize(dist):
+    """Multiply each number by a constant such that the sum is 1.0"""
+    if isinstance(dist, dict):
+        total = sum(dist.values())
+        for key in dist:
+            dist[key] = dist[key] / total
+            assert 0 <= dist[key] <= 1, "Probabilities must be between 0 and 1."
+        return dist
+    total = sum(dist)
+    return [(n / total) for n in dist]
+
+
+def norm(X, n=2):
+    """Return the n-norm of vector X"""
+    return sum([x ** n for x in X]) ** (1 / n)
+
+
+def clip(x, lowest, highest):
+    """Return x clipped to the range [lowest..highest]."""
+    return max(lowest, min(x, highest))
+
+
+def sigmoid_derivative(value):
+    return value * (1 - value)
+
+
+def sigmoid(x):
+    """Return activation value of x with sigmoid function"""
+    return 1 / (1 + math.exp(-x))
+
+
+
+def relu_derivative(value):
+	if value > 0:
+		return 1
+	else:
+		return 0
+
+def elu(x, alpha=0.01):
+	if x > 0:
+		return x
+	else:
+		return alpha * (math.exp(x) - 1)
+
+def elu_derivative(value, alpha = 0.01):
+	if value > 0:
+		return 1
+	else:
+		return alpha * math.exp(value)
+
+def tanh(x):
+	return np.tanh(x)
+
+def tanh_derivative(value):
+	return (1 - (value ** 2))
+
+def leaky_relu(x, alpha = 0.01):
+	if x > 0:
+		return x
+	else:
+		return alpha * x
+
+def leaky_relu_derivative(value, alpha=0.01):
+	if value > 0:
+		return 1
+	else:
+		return alpha
+
+def relu(x):
+	return max(0, x)
+
+def step(x):
+    """Return activation value of x with sign function"""
+    return 1 if x >= 0 else 0
+
+
+def gaussian(mean, st_dev, x):
+    """Given the mean and standard deviation of a distribution, it returns the probability of x."""
+    return 1 / (math.sqrt(2 * math.pi) * st_dev) * math.e ** (-0.5 * (float(x - mean) / st_dev) ** 2)
+
+def confidence_interval(data, confidence=0.95):
     """
-    k = total / sum(numbers)
-    return [k * n for n in numbers]
+    params:
+        data: an list of numbers
+        confidence: float from 0.0 - 1.0
 
-## OK, the following are not as widely useful utilities as some of the other
-## functions here, but they do show up wherever we have 2D grids: Wumpus and
-## Vacuum worlds, TicTacToe and Checkers, and markov decision Processes.
+    returns:
+        mean
+        lower bound of interval
+        upper bound of interval
+    """
+    n = len(data)
+    m = mean(data)
+    std_err = sem(data)
+    h = std_err * t.ppf((1 + confidence) / 2, n - 1)
+    start = m - h
+    end = m + h
+    return m, start, end
 
-orientations = [(1,0), (0, 1), (-1, 0), (0, -1)]
+try:  # math.isclose was added in Python 3.5; but we might be in 3.4
+    from math import isclose
+except ImportError:
+    def isclose(a, b, rel_tol=1e-09, abs_tol=0.0):
+        """Return true if numbers a and b are close to each other."""
+        return abs(a - b) <= max(rel_tol * max(abs(a), abs(b)), abs_tol)
 
-def turn_right(orientation):
-    return orientations[orientations.index(orientation)-1]
+# ______________________________________________________________________________
+# Grid Functions
 
-def turn_left(orientation):
-    return orientations[(orientations.index(orientation)+1) % len(orientations)]
 
-def distance(a,b):
-    "The distance between two (x, y) points."
-    (ax, ay) = a
-    (bx, by) = b
-    return math.hypot((ax - bx), (ay - by))
+orientations = EAST, NORTH, WEST, SOUTH = [(1, 0), (0, 1), (-1, 0), (0, -1)]
+turns = LEFT, RIGHT = (+1, -1)
 
-def distance2(a,b):
-    "The square of the distance between two (x, y) points."
-    (ax, ay) = a
-    (bx, by) = b
-    return (ax - bx)**2 + (ay - by)**2
 
-def clip(vector, lowest, highest):
+def turn_heading(heading, inc, headings=orientations):
+    return headings[(headings.index(heading) + inc) % len(headings)]
+
+
+def turn_right(heading):
+    return turn_heading(heading, RIGHT)
+
+
+def turn_left(heading):
+    return turn_heading(heading, LEFT)
+
+
+def distance(a, b):
+    """The distance between two (x, y) points."""
+    xA, yA = a
+    xB, yB = b
+    return math.hypot((xA - xB), (yA - yB))
+
+
+def distance2(a, b):
+    """The square of the distance between two (x, y) points."""
+    xA, yA = a
+    xB, yB = b
+    return (xA - xB) ** 2 + (yA - yB) ** 2
+
+def vector_clip(vector, lowest, highest):
     """Return vector, except if any element is less than the corresponding
     value of lowest or more than the corresponding value of highest, clip to
-    those values.
-    >>> clip((-1, 10), (0, 0), (9, 9))
-    (0, 9)
-    """
-    return type(vector)(map(min, map(max, vector, lowest), highest))
-#______________________________________________________________________________
+    those values."""
+    return type(vector)(map(clip, vector, lowest, highest))
+
+# ______________________________________________________________________________
 # Misc Functions
 
-def printf(format, *args):
-    """Format args with the first argument as format string, and write.
-    Return the last arg, or format itself if there are no args."""
-    sys.stdout.write(str(format) % args)
-    return if_(args, args[-1], format)
+class injection():
+    """Dependency injection of temporary values for global functions/classes/etc.
+    E.g., `with injection(DataBase=MockDataBase): ...`"""
 
-def caller(n=1):
-    """Return the name of the calling function n levels up in the frame stack.
-    >>> caller(0)
-    'caller'
-    >>> def f():
-    ...     return caller()
-    >>> f()
-    'f'
-    """
-    import inspect
-    return  inspect.getouterframes(inspect.currentframe())[n][3]
+    def __init__(self, **kwds):
+        self.new = kwds
 
-def memoize(fn, slot=None):
+    def __enter__(self):
+        self.old = {v: globals()[v] for v in self.new}
+        globals().update(self.new)
+
+    def __exit__(self, type, value, traceback):
+        globals().update(self.old)
+
+
+def memoize(fn, slot=None, maxsize=32):
     """Memoize fn: make it remember the computed value for any argument list.
     If slot is specified, store result in that slot of first argument.
-    If slot is false, store results in a dictionary."""
+    If slot is false, use lru_cache for caching the values."""
     if slot:
         def memoized_fn(obj, *args):
             if hasattr(obj, slot):
@@ -586,73 +444,316 @@ def memoize(fn, slot=None):
                 setattr(obj, slot, val)
                 return val
     else:
+        @functools.lru_cache(maxsize=maxsize)
         def memoized_fn(*args):
-            if not memoized_fn.cache.has_key(args):
-                memoized_fn.cache[args] = fn(*args)
-            return memoized_fn.cache[args]
-        memoized_fn.cache = {}
+            return fn(*args)
+
     return memoized_fn
 
-def if_(test, result, alternative):
-    """Like C++ and Java's (test ? result : alternative), except
-    both result and alternative are always evaluated. However, if
-    either evaluates to a function, it is applied to the empty arglist,
-    so you can delay execution by putting it in a lambda.
-    >>> if_(2 + 2 == 4, 'ok', lambda: expensive_computation())
-    'ok'
-    """
-    if test:
-        if callable(result): return result()
-        return result
-    else:
-        if callable(alternative): return alternative()
-        return alternative
 
-def name(object):
-    "Try to find some reasonable name for the object."
-    return (getattr(object, 'name', 0) or getattr(object, '__name__', 0)
-            or getattr(getattr(object, '__class__', 0), '__name__', 0)
-            or str(object))
+def name(obj):
+    """Try to find some reasonable name for the object."""
+    return (getattr(obj, 'name', 0) or getattr(obj, '__name__', 0) or
+            getattr(getattr(obj, '__class__', 0), '__name__', 0) or
+            str(obj))
+
 
 def isnumber(x):
-    "Is x a number? We say it is if it has a __int__ method."
+    """Is x a number?"""
     return hasattr(x, '__int__')
 
-def issequence(x):
-    "Is x a sequence? We say it is if it has a __getitem__ method."
-    return hasattr(x, '__getitem__')
 
-def print_table(table, header=None, sep=' ', numfmt='%g'):
+def issequence(x):
+    """Is x a sequence?"""
+    return isinstance(x, collections.abc.Sequence)
+
+
+def print_table(table, header=None, sep='   ', numfmt='{}'):
     """Print a list of lists as a table, so that columns line up nicely.
     header, if specified, will be printed as the first row.
-    numfmt is the format for all numbers; you might want e.g. '%6.2f'.
-    (If you want different formats in differnt columns, don't use print_table.)
-    sep is the separator between columns."""
-    justs = [if_(isnumber(x), 'rjust', 'ljust') for x in table[0]]
+    numfmt is the format for all numbers; you might want e.g. '{:.2f}'.
+    (If you want different formats in different columns,
+    don't use print_table.) sep is the separator between columns."""
+    justs = ['rjust' if isnumber(x) else 'ljust' for x in table[0]]
+
     if header:
-        table = [header] + table
-    table = [[if_(isnumber(x), lambda: numfmt % x, x)  for x in row]
+        table.insert(0, header)
+
+    table = [[numfmt.format(x) if isnumber(x) else x for x in row]
              for row in table]
-    maxlen = lambda seq: max(map(len, seq))
-    sizes = map(maxlen, zip(*[map(str, row) for row in table]))
+
+    sizes = list(
+        map(lambda seq: max(map(len, seq)),
+            list(zip(*[map(str, row) for row in table]))))
+
     for row in table:
-        for (j, size, x) in zip(justs, sizes, row):
-            print(getattr(str(x), j)(size), sep,)
-        print()
-
-def AIMAFile(components, mode='r'):
-    "Open a file based at the AIMA root directory."
-    import utils
-    dir = os.path.dirname(utils.__file__)
-    return open(apply(os.path.join, [dir] + components), mode)
-
-def DataFile(name, mode='r'):
-    "Return a file in the AIMA /data directory."
-    return AIMAFile(['..', 'data', name], mode)
+        print(sep.join(getattr(
+            str(x), j)(size) for (j, size, x) in zip(justs, sizes, row)))
 
 
-#______________________________________________________________________________
+def open_data(name, mode='r'):
+    aima_root = os.path.dirname(__file__)
+    aima_file = os.path.join(aima_root, *['aima-data', name])
+
+    return open(aima_file, mode=mode)
+
+
+def failure_test(algorithm, tests):
+    """Grades the given algorithm based on how many tests it passes.
+    Most algorithms have arbitrary output on correct execution, which is difficult
+    to check for correctness. On the other hand, a lot of algorithms output something
+    particular on fail (for example, False, or None).
+    tests is a list with each element in the form: (values, failure_output)."""
+    from statistics import mean
+    return mean(int(algorithm(x) != y) for x, y in tests)
+
+
+# ______________________________________________________________________________
+# Expressions
+
+# See https://docs.python.org/3/reference/expressions.html#operator-precedence
+# See https://docs.python.org/3/reference/datamodel.html#special-method-names
+
+class Expr(object):
+    """A mathematical expression with an operator and 0 or more arguments.
+    op is a str like '+' or 'sin'; args are Expressions.
+    Expr('x') or Symbol('x') creates a symbol (a nullary Expr).
+    Expr('-', x) creates a unary; Expr('+', x, 1) creates a binary."""
+
+    def __init__(self, op, *args):
+        self.op = str(op)
+        self.args = args
+
+    # Operator overloads
+    def __neg__(self):
+        return Expr('-', self)
+
+    def __pos__(self):
+        return Expr('+', self)
+
+    def __invert__(self):
+        return Expr('~', self)
+
+    def __add__(self, rhs):
+        return Expr('+', self, rhs)
+
+    def __sub__(self, rhs):
+        return Expr('-', self, rhs)
+
+    def __mul__(self, rhs):
+        return Expr('*', self, rhs)
+
+    def __pow__(self, rhs):
+        return Expr('**', self, rhs)
+
+    def __mod__(self, rhs):
+        return Expr('%', self, rhs)
+
+    def __and__(self, rhs):
+        return Expr('&', self, rhs)
+
+    def __xor__(self, rhs):
+        return Expr('^', self, rhs)
+
+    def __rshift__(self, rhs):
+        return Expr('>>', self, rhs)
+
+    def __lshift__(self, rhs):
+        return Expr('<<', self, rhs)
+
+    def __truediv__(self, rhs):
+        return Expr('/', self, rhs)
+
+    def __floordiv__(self, rhs):
+        return Expr('//', self, rhs)
+
+    def __matmul__(self, rhs):
+        return Expr('@', self, rhs)
+
+    def __or__(self, rhs):
+        """Allow both P | Q, and P |'==>'| Q."""
+        if isinstance(rhs, Expression):
+            return Expr('|', self, rhs)
+        else:
+            return PartialExpr(rhs, self)
+
+    # Reverse operator overloads
+    def __radd__(self, lhs):
+        return Expr('+', lhs, self)
+
+    def __rsub__(self, lhs):
+        return Expr('-', lhs, self)
+
+    def __rmul__(self, lhs):
+        return Expr('*', lhs, self)
+
+    def __rdiv__(self, lhs):
+        return Expr('/', lhs, self)
+
+    def __rpow__(self, lhs):
+        return Expr('**', lhs, self)
+
+    def __rmod__(self, lhs):
+        return Expr('%', lhs, self)
+
+    def __rand__(self, lhs):
+        return Expr('&', lhs, self)
+
+    def __rxor__(self, lhs):
+        return Expr('^', lhs, self)
+
+    def __ror__(self, lhs):
+        return Expr('|', lhs, self)
+
+    def __rrshift__(self, lhs):
+        return Expr('>>', lhs, self)
+
+    def __rlshift__(self, lhs):
+        return Expr('<<', lhs, self)
+
+    def __rtruediv__(self, lhs):
+        return Expr('/', lhs, self)
+
+    def __rfloordiv__(self, lhs):
+        return Expr('//', lhs, self)
+
+    def __rmatmul__(self, lhs):
+        return Expr('@', lhs, self)
+
+    def __call__(self, *args):
+        "Call: if 'f' is a Symbol, then f(0) == Expr('f', 0)."
+        if self.args:
+            raise ValueError('can only do a call for a Symbol, not an Expr')
+        else:
+            return Expr(self.op, *args)
+
+    # Equality and repr
+    def __eq__(self, other):
+        "'x == y' evaluates to True or False; does not build an Expr."
+        return (isinstance(other, Expr)
+                and self.op == other.op
+                and self.args == other.args)
+
+    def __hash__(self):
+        return hash(self.op) ^ hash(self.args)
+
+    def __repr__(self):
+        op = self.op
+        args = [str(arg) for arg in self.args]
+        if op.isidentifier():  # f(x) or f(x, y)
+            return '{}({})'.format(op, ', '.join(args)) if args else op
+        elif len(args) == 1:  # -x or -(x + 1)
+            return op + args[0]
+        else:  # (x - y)
+            opp = (' ' + op + ' ')
+            return '(' + opp.join(args) + ')'
+
+
+# An 'Expression' is either an Expr or a Number.
+# Symbol is not an explicit type; it is any Expr with 0 args.
+
+
+Number = (int, float, complex)
+Expression = (Expr, Number)
+
+
+def Symbol(name):
+    """A Symbol is just an Expr with no args."""
+    return Expr(name)
+
+
+def symbols(names):
+    """Return a tuple of Symbols; names is a comma/whitespace delimited str."""
+    return tuple(Symbol(name) for name in names.replace(',', ' ').split())
+
+
+def subexpressions(x):
+    """Yield the subexpressions of an Expression (including x itself)."""
+    yield x
+    if isinstance(x, Expr):
+        for arg in x.args:
+            yield from subexpressions(arg)
+
+
+def arity(expression):
+    """The number of sub-expressions in this expression."""
+    if isinstance(expression, Expr):
+        return len(expression.args)
+    else:  # expression is a number
+        return 0
+
+
+# For operators that are not defined in Python, we allow new InfixOps:
+
+
+class PartialExpr:
+    """Given 'P |'==>'| Q, first form PartialExpr('==>', P), then combine with Q."""
+
+    def __init__(self, op, lhs):
+        self.op, self.lhs = op, lhs
+
+    def __or__(self, rhs):
+        return Expr(self.op, self.lhs, rhs)
+
+    def __repr__(self):
+        return "PartialExpr('{}', {})".format(self.op, self.lhs)
+
+
+def expr(x):
+    """Shortcut to create an Expression. x is a str in which:
+    - identifiers are automatically defined as Symbols.
+    - ==> is treated as an infix |'==>'|, as are <== and <=>.
+    If x is already an Expression, it is returned unchanged. Example:
+    >>> expr('P & Q ==> Q')
+    ((P & Q) ==> Q)
+    """
+    if isinstance(x, str):
+        return eval(expr_handle_infix_ops(x), defaultkeydict(Symbol))
+    else:
+        return x
+
+
+infix_ops = '==> <== <=>'.split()
+
+
+def expr_handle_infix_ops(x):
+    """Given a str, return a new str with ==> replaced by |'==>'|, etc.
+    >>> expr_handle_infix_ops('P ==> Q')
+    "P |'==>'| Q"
+    """
+    for op in infix_ops:
+        x = x.replace(op, '|' + repr(op) + '|')
+    return x
+
+
+class defaultkeydict(collections.defaultdict):
+    """Like defaultdict, but the default_factory is a function of the key.
+    >>> d = defaultkeydict(len); d['four']
+    4
+    """
+
+    def __missing__(self, key):
+        self[key] = result = self.default_factory(key)
+        return result
+
+
+class hashabledict(dict):
+    """Allows hashing by representing a dictionary as tuple of key:value pairs
+       May cause problems as the hash value may change during runtime
+    """
+
+    def __hash__(self):
+        return 1
+
+
+# ______________________________________________________________________________
 # Queues: Stack, FIFOQueue, PriorityQueue
+# Stack and FIFOQueue are implemented as list and collection.deque
+# PriorityQueue is implemented here
+
+def Stack():
+    """Return an empty list, suitable as a Last-In-First-Out Queue."""
+    return []
 
 class Queue:
     """Queue is an abstract class/interface. There are three types:
@@ -667,15 +768,12 @@ class Queue:
     Note that isinstance(Stack(), Queue) is false, because we implement stacks
     as lists.  If Python ever gets interfaces, Queue will be an interface."""
 
-    def __init__(self): 
-        abstract
+    def __init__(self):
+        pass
 
     def extend(self, items):
         for item in items: self.append(item)
 
-def Stack():
-    """Return an empty list, suitable as a Last-In-First-Out Queue."""
-    return []
 
 class FIFOQueue(Queue):
     """A First-In-First-Out Queue."""
@@ -686,8 +784,8 @@ class FIFOQueue(Queue):
     def __len__(self):
         return len(self.A) - self.start
     def extend(self, items):
-        self.A.extend(items)     
-    def pop(self):        
+        self.A.extend(items)
+    def pop(self):
         e = self.A[self.start]
         self.start += 1
         if self.start > 5 and self.start > len(self.A)/2:
@@ -695,25 +793,95 @@ class FIFOQueue(Queue):
             self.start = 0
         return e
 
-class PriorityQueue(Queue):
-    """A queue in which the minimum (or maximum) element (as determined by f and
-    order) is returned first. If order is min, the item with minimum f(x) is
-    returned first; if order is max, then it is the item with maximum f(x)."""
-    def __init__(self, order=min, f=lambda x: x):
-        update(self, A=[], order=order, f=f)
-    def append(self, item):
-        bisect.insort(self.A, (self.f(item), item))
-    def __len__(self):
-        return len(self.A)
-    def pop(self):
-        if self.order == min:
-            return self.A.pop(0)[1]
+class PriorityQueue:
+    """A Queue in which the minimum (or maximum) element (as determined by f and
+    order) is returned first.
+    If order is 'min', the item with minimum f(x) is
+    returned first; if order is 'max', then it is the item with maximum f(x).
+    Also supports dict-like lookup."""
+
+    def __init__(self, order='min', f=lambda x: x):
+        self.heap = []
+
+        if order == 'min':
+            self.f = f
+        elif order == 'max':  # now item with max f(x)
+            self.f = lambda x: -f(x)  # will be popped first
         else:
-            return self.A.pop()[1]
+            raise ValueError("order must be either 'min' or 'max'.")
+
+    def append(self, item):
+        """Insert item at its correct position."""
+        heapq.heappush(self.heap, (self.f(item), item))
+
+    def extend(self, items):
+        """Insert each item in items at its correct position."""
+        for item in items:
+            self.append(item)
+
+    def pop(self):
+        """Pop and return the item (with min or max f(x) value)
+        depending on the order."""
+        if self.heap:
+            return heapq.heappop(self.heap)[1]
+        else:
+            raise Exception('Trying to pop from empty PriorityQueue.')
+
+    def __len__(self):
+        """Return current capacity of PriorityQueue."""
+        return len(self.heap)
+
+    def __contains__(self, key):
+        """Return True if the key is in PriorityQueue."""
+        return any([item == key for _, item in self.heap])
+
+    def __getitem__(self, key):
+        """Returns the first value associated with key in PriorityQueue.
+        Raises KeyError if key is not present."""
+        for value, item in self.heap:
+            if item == key:
+                return value
+        raise KeyError(str(key) + " is not in the priority queue")
+
+    def __delitem__(self, key):
+        """Delete the first occurrence of key."""
+        try:
+            del self.heap[[item == key for _, item in self.heap].index(True)]
+        except ValueError:
+            raise KeyError(str(key) + " is not in the priority queue")
+        heapq.heapify(self.heap)
+
+
+# ______________________________________________________________________________
+# Monte Carlo tree node and ucb function
+class MCT_Node:
+    """Node in the Monte Carlo search tree, keeps track of the children states"""
+    def __init__(self, parent=None, state=None, U=0, N=0):
+        self.__dict__.update(parent=parent, state=state, U=U, N=N)
+        self.children = {}
+        self.actions = None
+
+
+def ucb(n, C=1.4):
+    return (float('inf') if n.N == 0 else
+        n.U / n.N + C * math.sqrt(math.log(n.parent.N)/n.N))
+
+
+# ______________________________________________________________________________
+# Useful Shorthands
+
+
+class Bool(int):
+    """Just like `bool`, except values display as 'T' and 'F' instead of 'True' and 'False'"""
+    __str__ = __repr__ = lambda self: 'T' if self else 'F'
+
+
+T = Bool(True)
+F = Bool(False)
 
 ## Fig: The idea is we can define things like Fig[3,10] later.
 ## Alas, it is Fig[3,10] not Fig[3.10], because that would be the same as Fig[3.1]
-Fig = {} 
+Fig = {}
 
 #______________________________________________________________________________
 # Mark's Helpers
@@ -735,3 +903,32 @@ class Timer(object):
             print(('[%s] - Elapsed: ' + self.format) % (self.name, time.time() - self.tstart))
         else:
             print(('Elapsed: ' + self.format) % (time.time() - self.tstart))
+
+
+def update(x, **entries):
+    """Update a dict; or an object with slots; according to entries.
+    >>> update({'a': 1}, a=10, b=20)
+    {'a': 10, 'b': 20}
+    >>> update(Struct(a=1), a=10, b=20)
+    Struct(a=10, b=20)
+    """
+    if isinstance(x, dict):
+        x.update(entries)
+    else:
+        x.__dict__.update(entries)
+    return x
+
+def if_(test, result, alternative):
+    """Like C++ and Java's (test ? result : alternative), except
+    both result and alternative are always evaluated. However, if
+    either evaluates to a function, it is applied to the empty arglist,
+    so you can delay execution by putting it in a lambda.
+    >>> if_(2 + 2 == 4, 'ok', lambda: expensive_computation())
+    'ok'
+    """
+    if test:
+        if callable(result): return result()
+        return result
+    else:
+        if callable(alternative): return alternative()
+        return alternative

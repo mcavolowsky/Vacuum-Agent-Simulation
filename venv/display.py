@@ -1,3 +1,6 @@
+
+# TODO: Logging and playback
+
 from types import MethodType
 import tkinter as tk
 import PIL.Image as Image
@@ -64,13 +67,14 @@ class Icon():
             self.hide()
 
 class EnvFrame(tk.Frame):
-    def __init__(self, env, root = tk.Tk(), title='Robot Vacuum Simulation', cellwidth=50, n=10):
+    def __init__(self, env, root, title='Robot Vacuum Simulation', cellwidth=50, n=10):
         update(self, cellwidth=cellwidth, running=False, delay=1.0)
         self.root = root
         self.running = 0
         self.delay = 0.1
         self.env = env
         self.cellwidth = cellwidth
+        self.time_label = None
 
         tk.Frame.__init__(self, None, width=min((cellwidth + 2) * env.width,self.root.winfo_screenwidth()),
                           height=min((cellwidth + 2) * env.height, self.root.winfo_screenheight()))
@@ -87,7 +91,8 @@ class EnvFrame(tk.Frame):
                          command=lambda d: setattr(self, 'delay', d))
         scale.set(self.delay)
         scale.pack(side='left')
-
+        self.time_label = tk.Label(toolbar, text='')
+        self.time_label.pack(side='right')
 
         # Canvas for drawing on
         self.canvas = tk.Canvas(self, width=(cellwidth + 1) * env.width,
@@ -110,23 +115,36 @@ class EnvFrame(tk.Frame):
         self.canvas.bind('<Button-3>', self.right_click)
         if cellwidth:
             c = self.canvas
-            for i in range(1, env.width + 1):
-                c.create_line(0, i * (cellwidth + 1), env.height * (cellwidth + 1), i * (cellwidth + 1))
+            for i in range(1, env.height + 1):
+                c.create_line(0, i * (cellwidth + 1), env.width * (cellwidth + 1), i * (cellwidth + 1))
                 c.pack(expand=1, fill='both')
-            for j in range(1,env.height + 1):
-                c.create_line(j * (cellwidth + 1), 0, j * (cellwidth + 1), env.width * (cellwidth + 1))
+            for j in range(1,env.width + 1):
+                c.create_line(j * (cellwidth + 1), 0, j * (cellwidth + 1), env.height * (cellwidth + 1))
                 c.pack(expand=1, fill='both')
         self.pack()
 
-        self.class2file = {'':'', 'RandomReflexAgent':'robot-%s',
-                       'Dirt':'dirt',
-                       'Wall':'wall',
+        self.class2file = {'':'',
+                        'GreedyAgentWithRangePerception':'robot-%s',
+                        'GreedyAgent':'robot-%s',
+                        'RandomReflexAgent':'robot-%s',
+                        'GreedyAgentWithoutRangePerception':'robot-%s',
+                        'KMeansAgentWithNetworkComms':'robot-%s',
+                        'GreedyDrone':'drone-%s',
+                        'Truck':'truck-%s',
+                        'Dirt':'dirt',
+                        'Recycle':'recycle',
+                        'Wall':'wall',
                         'Fire':'fire'}
         self.file2image = {'':None, 'robot-right':itk.PhotoImage(Image.open('img/robot-right.png').resize((int(0.8*cellwidth),int(0.8*cellwidth)),resample=Image.LANCZOS)),
                        'robot-left':itk.PhotoImage(Image.open('img/robot-left.png').resize((int(0.8*cellwidth),int(0.8*cellwidth)),resample=Image.LANCZOS)),
                        'robot-up':itk.PhotoImage(Image.open('img/robot-up.png').resize((int(0.8*cellwidth),int(0.8*cellwidth)),resample=Image.LANCZOS)),
                        'robot-down':itk.PhotoImage(Image.open('img/robot-down.png').resize((int(0.8*cellwidth),int(0.8*cellwidth)),resample=Image.LANCZOS)),
+                       'drone-right':itk.PhotoImage(Image.open('img/drone-right.png').resize((int(0.8*cellwidth),int(0.8*cellwidth)),resample=Image.LANCZOS)),
+                       'drone-left':itk.PhotoImage(Image.open('img/drone-left.png').resize((int(0.8*cellwidth),int(0.8*cellwidth)),resample=Image.LANCZOS)),
+                       'drone-up':itk.PhotoImage(Image.open('img/drone-up.png').resize((int(0.8*cellwidth),int(0.8*cellwidth)),resample=Image.LANCZOS)),
+                       'drone-down':itk.PhotoImage(Image.open('img/drone-down.png').resize((int(0.8*cellwidth),int(0.8*cellwidth)),resample=Image.LANCZOS)),
                        'dirt':itk.PhotoImage(Image.open('img/dirt.png').resize((int(0.8*cellwidth),int(0.4*cellwidth)),resample=Image.LANCZOS)),
+                       'recycle':itk.PhotoImage(Image.open('img/recycle.png').resize((int(0.8*cellwidth),int(0.8*cellwidth)),resample=Image.LANCZOS)),
                        'wall':itk.PhotoImage(Image.open('img/wall.png').resize((int(0.8*cellwidth),int(0.8*cellwidth)),resample=Image.LANCZOS)),
                        'fire':itk.PhotoImage(Image.open('img/fire.png').resize((int(0.55*cellwidth),int(0.8*cellwidth)),resample=Image.LANCZOS))}
         # note up and down are switched, since (0,0) is in the upper left
@@ -143,9 +161,9 @@ class EnvFrame(tk.Frame):
                 ms = int(1000 * max(float(self.delay), 0.01))
                 self.after(ms, self.background_run)
 
-    def run(self):
+    def run(self, pause=False):
         print('run')
-        self.running = 1
+        self.running = not pause
         self.background_run()
 
     def next_step(self):
@@ -154,7 +172,7 @@ class EnvFrame(tk.Frame):
 
     def stop(self):
         print('stop')
-        self.running = 0
+        self.running = False
 
     def left_click(self, event):
         loc = (int(event.x / (self.cellwidth + 1)), int(event.y / (self.cellwidth + 1)))
@@ -164,11 +182,16 @@ class EnvFrame(tk.Frame):
         else:
             obj_string = str([str(o)[:len(str(o))-1] + ' performance=%s>' % o.performance if hasattr(o, 'performance') else str(o) for o in objs])
         print('Cell (%s, %s) contains %s' %  (loc[0], loc[1], obj_string))
+        for obj in objs:
+            if isinstance(obj, Agent) and hasattr(obj, 'comms'):
+                print('percepts = %s' % obj.percepts)
+                print('comms = %s' % obj.comms)
+                print('dirts = %s' % [o for o in obj.percepts['Objects'] if o[0] == 'Dirt'])
 
     def middle_click(self, event):
         pass
 
-    def right_click(self, event):
+    def right_click(self, event):  # TODO: Add additional debugging for the Agent state
         loc = (int(event.x / (self.cellwidth + 1)), int(event.y / (self.cellwidth + 1)))
         agts = self.env.find_at(Agent, loc)
         if agts:
@@ -183,10 +206,11 @@ class EnvFrame(tk.Frame):
             print('Cell (%s, %s) contains %s' % (loc[0], loc[1], 'No Agents'))
 
     def object_to_image(self,obj):
-        if hasattr(obj, 'heading'):
-            return self.file2image[self.class2file.get(getattr(obj, '__name__', obj.__class__.__name__),'') % self.orientation[obj.heading]]
+        f = self.class2file.get(getattr(obj, '__name__', obj.__class__.__name__),'')
+        if hasattr(obj, 'heading') and f!='':
+            return self.file2image[f % self.orientation[obj.heading]]
         else:
-            return self.file2image[self.class2file.get(getattr(obj, '__name__', obj.__class__.__name__),'')]
+            return self.file2image[f]
 
     def display_object(self, obj):
         obj.icon = self.NewIcon(obj)
@@ -199,8 +223,6 @@ class EnvFrame(tk.Frame):
 
         obj.destroy = MethodType(destroy_with_images, obj)
         return obj
-
-
 
     def NewIcon(self, obj):
         # lookup default image and add it to the list
@@ -220,6 +242,8 @@ class EnvFrame(tk.Frame):
     def configure_display(self):
         for obj in self.env.objects:
             obj = self.display_object(obj)
+        # for i in range(len(self.env.objects)):
+        #     self.env.objects[i] = self.display_object(self.env.objects[i])
         self.update_display()
 
     def update_display(self):
@@ -230,4 +254,5 @@ class EnvFrame(tk.Frame):
                 self.display_object(obj)
 
         self.canvas.tag_lower('Dirt')
+        self.time_label.config(text='time = %s' % self.env.t)
 #______________________________________________________________________________

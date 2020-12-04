@@ -4,18 +4,35 @@ This is hosted on github.
 This is heavily based on the example from Artificial Intelligence: A Modern Approach located here:
 http://aima.cs.berkeley.edu/python/agents.html
 http://aima.cs.berkeley.edu/python/agents.py
+
+install instructions:
+
+pip install matplotlib
+pip install numpy==1.19.3
+pip install tqdm
+pip install scipy
+pip install networkx
+
 '''
 
 import inspect
-from utils import *
-import random, copy
+import random, copy, warnings
 from functools import partial
+import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+from matplotlib import cm
+from tqdm import tqdm
+import concurrent.futures
+import pickle
 
 # import my files
-#import agents as ag
 from agents import *
 from objects import *
 from display import *
+from problem import *
+from comms import *
+import json
+import utils
 
 '''Implement Agents and Environments (Chapters 1-2).
 
@@ -39,10 +56,27 @@ EnvFrame ## A graphical representation of the Environment
 
 '''
 
+# TODO: Fix the issue with the seed not functioning as expected for multi-run tests (e.g. test9())
+
+def new_seed(a=None): # create a new_seed function to add new behavior before old_seed
+    if a == None:                   # if the seed is random
+        print('seed is None, generating random seed')
+        a = random.getrandbits(16)  # then create a random 20 bit number (1 in 1,000,000)
+    random.current_seed = a         # store the seed value in random.current_seed if hasattr(random,'current_seed') else '??' if hasattr(random,'current_seed') else '??'
+    old_seed(a)                     # run the old_seed function with the seed value (a)
+
+#random.seed = new_seed  # replace the random.seed function with our new_seed function
+#random.seed(None)       # generate a random seed to use have a known seed as the current value
 
 
-
-
+current_seed = None
+def set_seed(a=None):
+    if a == None:  # if the seed is random
+        print('seed is None, generating random seed')
+        a = random.getrandbits(16)  # then create a random 20 bit number (1 in 1,000,000)
+    global current_seed
+    current_seed = a  # store the seed value in current_seed if hasattr(random,'current_seed') else '??' if hasattr(random,'current_seed') else '??'
+    random.seed(a)
 
 
 class Environment:
@@ -57,27 +91,49 @@ class Environment:
     """
 
     def __init__(self,):
-        self.objects = []; self.agents = []
+        self.t = 0
+        self.objects = []
+        self.agents = []
+        self.perceptors = {}
+        self.communicator = None
+        self.actuators = {}
+        self.problem = None
 
     # Mark: What does this do?  It isn't checked in the Environment class's add_object.
     object_classes = [] ## List of classes that can go into environment
 
     def percept(self, agent):
-	    # Return the percept that the agent sees at this point. Override this.
-        # Mark: Updated the code to use best practices on NotImplementedError over abstract
-        raise NotImplementedError
+        agentpercept = {}  # initialize the percept dictionary
+        for per in agent.perceptor_types:  # for each perceptor in agent
+            # calculate the percept value for the perceptor and append to the percept dictionary
+            agentpercept.update(self.perceptors[per.__name__].percept(agent))
+        return agentpercept
 
-    def execute_action(self, agent, action):
-        "Change the world to reflect this action. Override this."
-        raise NotImplementedError
+    def execute_action(self, agent, action, params=None):
+        if not params: params = {}
+        if [act.type for act in agent.actuator_types if type(self.actuators[action]) is act.type]:  # if the requested action is in the list
+            for ps in [c.params for c in agent.actuator_types if c.type.__name__ == action]:
+                params.update(ps)
+            self.actuators[action].actuate(agent, params)  # call the requested action from the actuators dictionary
+        else:
+            # if the agent is trying to do something it can't, raise a warning
+            warnings.warn('%s requested action %s and it is not supported.' % (agent, action))
+
+    def communicate(self, from_agent):
+        if self.communicator:
+            agents_seen = self.communicator.get_comms_network(from_agent)
+            for to_agent in agents_seen:
+                self.communicator.communicate(from_agent.percepts, from_agent, to_agent)
 
     def default_location(self, obj):
         "Default location to place a new object with unspecified location"
         return None
 
+
     def exogenous_change(self):
 	    "If there is spontaneous change in the world, override this."
 	    pass
+
 
     def is_done(self):
         "By default, we're done when we can't find a live agent."
@@ -85,17 +141,43 @@ class Environment:
             if agent.is_alive(): return False
         return True
 
+
     def step(self):
         '''Run the environment for one time step. If the
         actions and exogenous changes are independent, this method will
         do.  If there are interactions between them, you'll need to
         override this method.'''
         if not self.is_done():
+            # increment time counter
+            self.t += 1
+
+            for agent in self.agents:
+                agent.percepts = self.percept(agent)
+
+            self.communicator.setup()
+            for from_agent in self.agents:  # TODO: how to add communication as an action?
+                self.communicate(from_agent)
+
+            for agent in self.agents:
+                if hasattr(agent, 'state_estimator'):
+                    if hasattr(agent, 'state'):
+                        agent.state = agent.state_estimator(agent.percepts, agent.comms, state=agent.state)
+                    else:
+                        agent.percepts = agent.state_estimator(agent.percepts, agent.comms)    # is there anything that we want to do here?
+                else:       # if there is no state_estimator() then just passthrough the percepts to the state
+                    #agent.state = agent.percepts
+                    pass
+
             # for each agent
-            # run agent.program with the agent's preception as an input
-            # agent's perception = Env.precept(agent)
-            actions = [agent.program(self.percept(agent))
-                       for agent in self.agents]
+            # run agent.program with the agent's state as an input
+            # agent's perception = Env.state(agent)
+
+            # generate actions
+            if hasattr(agent, 'state'):
+                actions = [agent.program(agent.state) for agent in self.agents]
+            else:
+                actions = [agent.program(agent.percepts) for agent in self.agents]
+
 
             # for each agent-action pair, have the environment process the actions
             for (agent, action) in zip(self.agents, actions):
@@ -118,9 +200,33 @@ class Environment:
         self.objects.append(obj)
         # If the object is an Agent, add it to self.agents and initialize performance parameter
         if isinstance(obj, Agent):
-            obj.performance = 0  # why isn't this part of the Agent class?
+            obj.performance = 0
+            self.add_perceptor_for_agent(obj)
+            self.add_actuator_for_agent(obj)
+            self.add_communicator_for_agent(obj)
             self.agents.append(obj)
         return obj
+
+    def add_perceptor_for_agent(self, agent):
+        for pertype in agent.perceptor_types: # for each type of perceptor for the agent
+            if not [p for p in self.perceptors.values() if type(p) is pertype]: # if the perceptor doesn't exist yet
+                self.perceptors[pertype.__name__] = pertype(self) # add the name:perceptor pair to the dictionary
+
+    def add_communicator_for_agent(self, agent):
+        if hasattr(agent, 'communicator') and agent.communicator:
+            if self.communicator: # if the communicator exists...
+                if not type(self.communicator) is agent.communicator:
+                    # if the communicator exists, but is a different type, throw and error (TODO: implement multiple communicators)
+                    raise ValueError('Communicator already exists')
+                else:  # if communicator exists and is the same type, don't recreate, just pass
+                    pass
+            else: # if it doesn't exist, create a new communicator based on the agent's communicator definition
+                self.communicator = agent.communicator(self) # set the communicator equal to the agent communicator
+
+    def add_actuator_for_agent(self, agent):
+        for acttype in agent.actuator_types: # for each type of perceptor for the agent
+            if not [act for act in self.actuators.values() if type(act) is acttype.type]: # if the perceptor doesn't exist yet
+                self.actuators[acttype.type.__name__] = acttype.type(self) # add the name:perceptor pair to the dictionary
 
 
 class XYEnvironment(Environment):
@@ -135,8 +241,9 @@ class XYEnvironment(Environment):
 
     def __init__(self, width=10, height=10):
         # set all of the initial conditions with the update function
-        # self.objects = [], self.agents = [], self.width = width, and self.height = height
-        update(self, objects=[], agents=[], width=width, height=height)
+        self.width = width
+        self.height = height
+        Environment.__init__(self)
 
     def objects_of_type(self, cls):
         # Use a list comprehension to return a list of all objects of type cls
@@ -150,76 +257,29 @@ class XYEnvironment(Environment):
         return [o for o in self.objects_at(loc) if isinstance(o, cls)]
 
     def objects_near(self, location, radius):
-        "Return all objects within radius of location."
+        """Return all objects within radius of location."""
         radius2 = radius * radius # square radius instead of taking the square root for faster processing
-        return [obj for obj in self.objects
-                if distance2(location, obj.location) <= radius2]
-
-    def percept(self, agent): # Unused, currently at default settings
-        "By default, agent perceives objects within radius r."
-        return [self.object_percept(obj, agent)
-                for obj in self.objects_near(agent)]
-
-    def execute_action(self, agent, action):
-        # The world processes actions on behalf of an agent.
-        # Agents decide what to do, but the Environment class actually processes the behavior.
-        #
-        # Implemented actions are 'TurnRignt', 'TurnLeft', 'Forward', 'Grab', 'Release'
-        if action == 'TurnRight':
-            # decrement the heading by -90° by getting the previous index of the headings array
-            agent.heading = self.turn_heading(agent.heading, -1)
-        elif action == 'TurnLeft':
-            # increment the heading by +90° by getting the next index of the headings array
-            agent.heading = self.turn_heading(agent.heading, +1)
-        elif action == 'Forward':
-            # move the Agent in the facing direction by adding the heading vector to the Agent location
-            self.move_to(agent, vector_add(agent.heading, agent.location))
-        elif action == 'Grab':
-            # check to see if any objects at the Agent's location are grabbable by the Agent
-            objs = [obj for obj in self.objects_at(agent.location)
-                if (obj != agent and obj.is_grabbable(agent))]
-            # if so, pick up all grabbable objects and add them to the holding array
-            if objs:
-                agent.holding += objs
-                for o in objs:
-                    # set the location of the Object = the Agent instance carrying the Object
-                    # by setting the location to an object instead of a tuple, we can now detect
-                    # when to remove if from the display.  This may be useful in other ways, if
-                    # the object needs to know who it's holder is
-                    o.location = agent
-                    if isinstance(o,Dirt): agent.performance += 100
-        elif action == 'Release':
-            # drop an objects being held by the Agent.
-            if agent.holding:
-                # restore the location parameter to add the object back to the display
-                agent.holding.pop().location = agent.location
-        agent.bump = False  # Reset the bump value of the agent
-
-    def object_percept(self, obj, agent): #??? Should go to object?
-        "Return the percept for this object."
-        return obj.__class__.__name__
+        return [obj for obj in self.objects if isinstance(obj.location, tuple) and distance(location, obj.location) <= radius]
 
     def default_location(self, obj):
         # If no location is specified, set the location to be a random location in the Environment.
         return (random.choice(self.width), random.choice(self.height))
 
     def move_to(self, obj, destination):
-        "Move an object to a new location."
+        """Move an object to a new location."""
         # Currently move_to assumes that the object is only moving a single cell at a time
         # e.g. agent.location + agent.heading => (x,y) + (0,1)
         #
         # The function finds all objects at the destination that have the blocker flag set.
         # If there are none, move to the destination
 
-        obstacles = [os for os in self.objects_at(destination) if os.blocker]
+        obstacles = [o for o in self.objects_at(destination) if o.blocker]
         if not obstacles:
             obj.location = destination
 
 
     def add_object(self, obj, location=(1, 1)):
         Environment.add_object(self, obj, location)
-
-        if isinstance(obj, Agent): obj.bump = False
 
         obj.holding = []
         obj.held = None
@@ -235,10 +295,6 @@ class XYEnvironment(Environment):
             self.add_object(Wall(), (0, y+1))
             self.add_object(Wall(), (self.width-1, y))
 
-    def turn_heading(self, heading, inc,
-                 headings=[(1, 0), (0, 1), (-1, 0), (0, -1)]):
-        "Return the heading to the left (inc=+1) or right (inc=-1) in headings."
-        return headings[(headings.index(heading) + inc) % len(headings)]
 
 #______________________________________________________________________________
 ## Vacuum environment
@@ -254,20 +310,6 @@ class VacuumEnvironment(XYEnvironment):
 
     object_classes = []
 
-    def percept(self, agent):
-        '''The percept is a tuple of ('Dirty' or 'Clean', 'Bump' or 'None').
-        Unlike the TrivialVacuumEnvironment, location is NOT perceived.'''
-        status =  if_(self.find_at(Dirt, agent.location), 'Dirty', 'Clean')
-        bump = if_(agent.bump, 'Bump', 'None')
-        return (status, bump)
-
-    def execute_action(self, agent, action):
-        if action == 'Suck':
-            if self.find_at(Dirt, agent.location):
-                agent.performance += 100
-        agent.performance -= 1
-        XYEnvironment.execute_action(self, agent, action)
-
     def exogenous_change(self):
         pass
 
@@ -276,6 +318,27 @@ def NewVacuumEnvironment(width=10, height=10, config=None):
     # Generate walls with dead cells in the center
     if config==None:
         pass
+    elif config=='empty':
+        # no dirt
+        # extend exogenous_change with function to detect if no dirt is left
+        old_exogenous_chage = e.exogenous_change
+
+        def new_exogenous_change(self):
+            old_exogenous_chage()
+            if not [d for d in self.objects_of_type(Dirt) if isinstance(d.location, tuple)]:
+                for a in self.agents:
+                    a.alive = False
+                    a.performance = self.t
+
+        e.exogenous_change = MethodType(new_exogenous_change, e)
+    elif config == 'shape of eight':
+        for x in [2,3]:
+            for y in [2,3]:
+                e.add_object(Wall(), (x,y))
+        for x in [2,3]:
+            for y in [5,6]:
+                e.add_object(Wall(), (x,y))
+        e.add_object(Dirt(),location=(4,5))
     elif config=='center walls':
         for x in range(int(e.width/2-5),int(e.width/2+5)):
             for y in range(int(e.height/2-5),int(e.height/2+5)):
@@ -284,12 +347,88 @@ def NewVacuumEnvironment(width=10, height=10, config=None):
                     e.add_object(Wall(), (x,y))
                 else:
                     e.add_object(DeadCell(), (x,y))
+
     elif config=='full dirt':
         # Fill a square area with dirt
-        if False:
-            for x in range(0,e.width):
-                for y in range(0,e.height):
-                    if e.find_at(Wall,(x,y)): e.add_object(Dirt(),location=(x,y))
+        for x in range(0,e.width):
+            for y in range(0,e.height):
+                if not e.find_at(Wall,(x,y)): e.add_object(Dirt(),location=(x,y))
+
+        # extend exogenous_change with function to detect if no dirt is left
+        old_exogenous_chage = e.exogenous_change
+        def new_exogenous_change(self):
+            old_exogenous_chage()
+            if not [d for d in self.objects_of_type(Dirt) if isinstance(d.location, tuple)]:
+                for a in self.agents:
+                    a.alive = False
+                    a.performance = self.t
+
+        e.exogenous_change = MethodType(new_exogenous_change, e)
+
+    elif config=='sparse dirt':
+        # Fill a square area with dirt every n cells
+        stp = 3
+        for x in range(0,e.width,stp):
+            for y in range(0,e.height,stp):
+                if not e.find_at(Wall,(x,y)): e.add_object(Dirt(),location=(x,y))
+
+        # extend exogenous_change with function to detect if no dirt is left
+        old_exogenous_chage = e.exogenous_change
+        def new_exogenous_change(self):
+            old_exogenous_chage()
+            if not [d for d in self.objects_of_type(Dirt) if isinstance(d.location, tuple)]:
+                for a in self.agents:
+                    a.alive = False
+                    a.performance = self.t
+
+        e.exogenous_change = MethodType(new_exogenous_change, e)
+
+    elif config=='corner dirt':
+        # Fill a square area with dirt every n cells
+        for (dx, dy) in [(0, 0), (37, 0), (0, 37), (37, 37)]:
+            for x in range(1, 12, 2):
+                for y in range(1, 12, 2):
+                    if not e.find_at(Wall, (dx+x, dy+y)): e.add_object(Dirt(), location=(dx+x, dy+y))
+
+        # extend exogenous_change with function to detect if no dirt is left
+        old_exogenous_chage = e.exogenous_change
+
+        def new_exogenous_change(self):
+            old_exogenous_chage()
+            if not [d for d in self.objects_of_type(Dirt) if isinstance(d.location, tuple)]:
+                for a in self.agents:
+                    a.alive = False
+                    a.performance = self.t
+
+        e.exogenous_change = MethodType(new_exogenous_change, e)
+
+    elif config=='random dirt':
+        for x in range(100):
+            loc = (random.randrange(width), random.randrange(height))
+            if not (e.find_at(Dirt, loc) or e.find_at(Wall, loc)):
+                e.add_object(Dirt(), loc)
+        # extend exogenous_change with function to detect if no dirt is left
+        old_exogenous_chage = e.exogenous_change
+        def new_exogenous_change(self):
+            old_exogenous_chage()
+            if not [d for d in self.objects_of_type(Dirt) if isinstance(d.location, tuple)]:
+                for a in self.agents:
+                    a.alive = False
+                    a.performance = self.t
+
+        e.exogenous_change = MethodType(new_exogenous_change, e)
+
+    elif config=='random dirt and wall':
+        for x in range(int(e.width/2-5),int(e.width/2+5)):
+            for y in range(int(e.height/2-5),int(e.height/2+5)):
+                if ((x == int(e.width/2-5)) or (x == int(e.width/2+4)) or
+                    (y == int(e.height/2-5)) or (y == int(e.height/2+4))):
+                    e.add_object(Wall(), (x,y))
+        for x in range(50):
+            loc = (random.randrange(width), random.randrange(width))
+            if not (e.find_at(Dirt, loc) or e.find_at(Wall, loc) or (loc[0] > 5 and loc[0]< 14) and loc[1] > 5 and loc[1] < 14):
+                e.add_object(Dirt(), loc)
+
     elif config=='center walls w/ random dirt and fire':
         for x in range(int(e.width/2-5),int(e.width/2+5)):
             for y in range(int(e.height/2-5),int(e.height/2+5)):
@@ -342,7 +481,7 @@ def NewVacuumEnvironment(width=10, height=10, config=None):
     return e
 #______________________________________________________________________________
 
-def compare_agents(EnvFactory, AgentFactories, n=10, steps=1000):
+def compare_agents(EnvFactory, AgentFactories, n=10, steps=100):
     '''See how well each of several agents do in n instances of an environment.
     Pass in a factory (constructor) for environments, and several for agents.
     Create n instances of the environment, and run each agent in copies of
@@ -361,16 +500,38 @@ def test_agent(AgentFactory, steps, envs):
             agent = AgentFactory()
             env.add_object(agent)
             env.run(steps)
-            total += agent.performance
+            total += env.t
     return float(total)/len(envs)
 
 #______________________________________________________________________________
 
-def test1():
-    e = NewVacuumEnvironment(width=20,height=20,config="center walls w/ random dirt and fire")
-    ef = EnvFrame(e,cellwidth=30)
 
-    # Create agents on left wall
+def test0(seed=None):
+    # set a seed to provide repeatable outcomes each run
+    set_seed(seed) # if the seed wasn't set in the input, the default value of none will create (and store) a random seed
+
+    e = NewVacuumEnvironment(width=20,height=20,config="random dirt")
+    ef = EnvFrame(e,root=tk.Tk(),cellwidth=30,
+                    title='Vacuum Robot Simulation - Scenario=%s(), Seed=%s' % (inspect.stack()[0][3],current_seed))
+
+    # Create agents
+
+    e.add_object(GreedyAgentWithRangePerception(sensor_radius=3))
+
+    ef.configure_display()
+    # ef.run()
+    ef.mainloop()
+
+
+def test1(seed=None):
+    # set a seed to provide repeatable outcomes each run
+    set_seed(seed) # if the seed wasn't set in the input, the default value of none will create (and store) a random seed
+
+    e = NewVacuumEnvironment(width=20,height=20,config="center walls w/ random dirt and fire")
+    ef = EnvFrame(e,root=tk.Tk(),cellwidth=30,
+                    title='Vacuum Robot Simulation - Scenario=%s(), Seed=%s' % (inspect.stack()[0][3],current_seed))
+
+    # Create agents
     for i in range(1,19):
         e.add_object(NewRandomReflexAgent(debug=False),location=(1,i)).id = i
 
@@ -378,16 +539,489 @@ def test1():
     ef.run()
     ef.mainloop()
 
-def test2():
-    EnvFactory = partial(NewVacuumEnvironment,width=10,height=10,config="full dirt")
-    AgentFactory = partial(NewRandomReflexAgent, debug=False)
-    print(compare_agents(EnvFactory, [AgentFactory]*2, n=10, steps=100))
+
+def test2(seed=None):
+    # set a seed to provide repeatable outcomes each run
+    set_seed(seed) # if the seed wasn't set in the input, the default value of none will create (and store) a random seed
+
+    EnvFactory = partial(NewVacuumEnvironment,width=20,height=20,config="random dirt")
+    sensor_radii = range(10)
+    results = compare_agents(EnvFactory, [partial(NewGreedyAgentWithRangePerception, debug=False, sensor_radius=r) for r in sensor_radii], n=10, steps=2000)
+    print(results)
+    plt.plot(sensor_radii,[r[1] for r in results],'r-')
+    plt.title('scenario=%s(), seed=%s' % (inspect.stack()[0][3],current_seed))
+    plt.xlabel('sensor radius')
+    plt.ylabel('time to fully clean')
+    plt.show()
+
+def test3(seed=None):
+    # set a seed to provide repeatable outcomes each run
+    set_seed(seed) # if the seed wasn't set in the input, the default value of none will create (and store) a random seed
+
+    e = NewVacuumEnvironment(width=20,height=20,config="center walls w/ random dirt and fire")
+    ef = EnvFrame(e,root=tk.Tk(),cellwidth=30,
+                    title='Vacuum Robot Simulation - Scenario=%s(), Seed=%s' % (inspect.stack()[0][3],current_seed))
+
+    # Create agents
+    for i in range(1,19):
+        e.add_object(GreedyAgentWithRangePerception(sensor_radius = 6), location=(1,i)).id = i
+
+    ef.configure_display()
+    ef.run()
+    ef.mainloop()
+
+def test4(seed=None):
+    # set a seed to provide repeatable outcomes each run
+    set_seed(seed) # if the seed wasn't set in the input, the default value of none will create (and store) a random seed
+
+    e = NewVacuumEnvironment(width=20,height=20,config="random dirt")
+    ef = EnvFrame(e,root=tk.Tk(),cellwidth=30,
+                    title='Vacuum Robot Simulation - Scenario=%s(), Seed=%s' % (inspect.stack()[0][3],current_seed))
+
+    # Create agents on the four corners
+    for x in range(2):
+        for y in range(2):
+            e.add_object(GreedyAgentWithRangePerception(sensor_radius = 6, communication = True), location=(1 + x*(e.width-3),1 + y*(e.height-3))).id = x*2+y+1
+
+    ef.configure_display()
+    ef.run()
+    ef.mainloop()
+
+def test5(seed=None):
+    # set a seed to provide repeatable outcomes each run
+    set_seed(seed) # if the seed wasn't set in the input, the default value of none will create (and store) a random seed
+
+    EnvFactory = partial(NewVacuumEnvironment,width=20,height=20,config="random dirt")
+    envs = [EnvFactory() for i in range(30)]
+    "Return the mean score of running an agent in each of the envs, for steps"
+    results = []
+    for communication in [True, False]:
+        total = 0
+        steps = 2000
+        i = 0
+        for env in copy.deepcopy(envs):
+            i+=1
+            with Timer(name='Simulation Timer - Comms=%s - Environment=%s' % (communication, i), format='%.4f'):
+                for x in range(2):
+                    for y in range(2):
+                        env.add_object(GreedyAgentWithRangePerception(sensor_radius=6, communication=True),
+                                     location=(1 + x * (env.width - 3), 1 + y * (env.height - 3))).id = x*2+y+1
+                env.run(steps)
+                total += env.t
+        results.append(float(total)/len(envs))
+    plt.bar(['True', 'False'],[r for r in results],align='center')
+    plt.title('scenario=%s(), seed=%s' % (inspect.stack()[0][3],current_seed))
+    plt.xlabel('communication')
+    plt.ylabel('time to fully clean')
+    plt.show()
+
+def test6(seed=None):
+    # set a seed to provide repeatable outcomes each run
+    set_seed(seed) # if the seed wasn't set in the input, the default value of none will create (and store) a random seed
+
+    e = NewVacuumEnvironment(width=6,height=9,config="shape of eight")
+    ef = EnvFrame(e,root=tk.Tk(),cellwidth=30,
+                    title='Vacuum Robot Simulation - Scenario=%s(), Seed=%s' % (inspect.stack()[0][3],current_seed))
+
+    # Create agents
+    e.add_object(NewGreedyAgentWithRangePerception(sensor_radius = 3, communication = True), location=(1,1)).id = 1
+
+    ef.configure_display()
+    ef.run()
+    ef.mainloop()
+
+def test7(seed=None):
+    # set a seed to provide repeatable outcomes each run
+    set_seed(seed) # if the seed wasn't set in the input, the default value of none will create (and store) a random seed
+
+    e = NewVacuumEnvironment(width=50, height=50, config="random dirt")
+    ef = EnvFrame(e,root=tk.Tk(), cellwidth=15,
+                    title='Vacuum Robot Simulation - Scenario=%s(), Seed=%s' % (inspect.stack()[0][3],current_seed))
+
+    # Create agents
+    if False:
+        for x in range(2):
+            for y in range(2):
+                e.add_object(NewGreedyAgentWithoutRangePerception(communication=True),
+                               location=(1 + x * (e.width - 3), 1 + y * (e.height - 3))).id = x * 2 + y + 1
+    else:
+        for i in range(29):
+            e.add_object(NewGreedyAgentWithoutRangePerception(communication=True), location=(random.randrange(1,e.width-2), random.randrange(1,e.height-2))).id = i+1
+
+        for i in range(1):
+            e.add_object(NewGreedyDrone(sensor_radius=10, communication=True), location=(random.randrange(1,e.width-2), random.randrange(1,e.height-2))).id = i+1
+
+    ef.configure_display()
+    ef.run()
+    ef.mainloop()
+
+def test8(seed=None):
+    # set a seed to provide repeatable outcomes each run
+    set_seed(seed) # if the seed wasn't set in the input, the default value of none will create (and store) a random seed
+
+    EnvFactory = partial(NewVacuumEnvironment,width=20,height=20,config="random dirt")
+    envs = [EnvFactory() for i in range(10)]
+    "Return the mean score of running an agent in each of the envs, for steps"
+    results = []
+    drone_range = range(0,10,2)
+    for num_drones in drone_range:
+        total = 0
+        steps = 2000
+        i = 0
+        for env in copy.deepcopy(envs):
+            i+=1
+            with Timer(name='Simulation Timer - # of Drones=%s - Environment=%s' % (num_drones, i), format='%.4f'):
+                for x in range(2):
+                    for y in range(2):
+                        env.add_object(NewGreedyAgentWithoutRangePerception(communication=True),
+                                location=(1 + x * (env.width - 3), 1 + y * (env.height - 3))).id = x * 2 + y + 1
+
+                for n in range(num_drones):
+                    env.add_object(NewGreedyDrone(sensor_radius=10, communication=True),
+                                 location=(random.randrange(1, 18), random.randrange(1, 18))).id = n + 1
+
+                env.run(steps)
+                total += env.t
+        results.append(float(total)/len(envs))
+    plt.plot(drone_range,[r for r in results],'r-')
+    plt.title('scenario=%s(), seed=%s' % (inspect.stack()[0][3],current_seed))
+    plt.xlabel('number of drones')
+    plt.ylabel('time to fully clean')
+    plt.show()
+
+def test9(seed=None):
+    # set a seed to provide repeatable outcomes each run
+    set_seed(seed) # if the seed wasn't set in the input, the default value of none will create (and store) a random seed
+
+    e = NewVacuumEnvironment(width=20, height=20, config="random dirt")
+    ef = EnvFrame(e,root=tk.Tk(), cellwidth=30,
+                    title='Vacuum Robot Simulation - Scenario=%s(), Seed=%s' % (inspect.stack()[0][3],current_seed))
+
+    # Create agents
+    for i in range(10):
+        o = NewGreedyAgentWithRangePerception(sensor_radius=6, communication=True)
+        o.actuator_types[3].params['probability'] = .1 if o.actuator_types[3].type is GrabObject else warnings.warn('actuator_type[3] is type %s not type GrabObject' % o.actuator_types[3].type)
+        e.add_object(o, location=(random.randrange(1,18), random.randrange(1,18))).id = i+1
+
+    ef.configure_display()
+    ef.run()
+    ef.mainloop()
+
+
+def test10(seed=None):
+    # set a seed to provide repeatable outcomes each run
+    set_seed(seed) # if the seed wasn't set in the input, the default value of none will create (and store) a random seed
+
+    width_max = 40
+    height_max = 40
+
+    EnvFactory = partial(NewVacuumEnvironment,width=width_max,height=height_max,config="random dirt")
+    envs = [EnvFactory() for i in range(25)]
+    "Return the mean score of running an agent in each of the envs, for steps"
+    results = []
+    agent_range = range(1,21,1)
+    for num_agents in agent_range:
+        total = 0
+        steps = 10000
+        i = 0
+        for env in copy.deepcopy(envs):
+            i+=1
+            with Timer(name='Simulation Timer - # of Agents=%s - p=%.3f - Environment=%s' % (num_agents, 1/num_agents, i), format='%.4f'):
+                for n in range(num_agents):
+                    o = NewGreedyAgentWithRangePerception(sensor_radius=12, communication=True)
+                    o.actuator_types[3].params['probability'] = 1/num_agents if o.actuator_types[3].type is GrabObject \
+                        else warnings.warn('actuator_type[3] is type %s not type GrabObject' % o.actuator_types[3].type)
+                    env.add_object(o, location=(random.randrange(1, width_max-2), random.randrange(1, width_max-2))).id = n + 1
+
+                env.run(steps)
+                total += env.t
+        results.append(float(total)/len(envs))
+    plt.plot(agent_range,[100/r for r in results],'r-')
+    plt.title('scenario=%s(), seed=%s' % (inspect.stack()[0][3],current_seed))
+    plt.xlabel('number of agents')
+    plt.ylabel('dirt cleaned per unit time')
+    plt.show()
+
+def test11(sensor_radius_min, sensor_radius_max, seed=None, showPlot=True):
+    """
+    Vary the team makeup (heterogeneity) and communication radius on the drones
+    to generate a plot of average completion time vs social entropy vs sensor radius
+    """
+    # set a seed to provide repeatable outcomes each run
+    random.seed(seed) # if the seed wasn't set in the input, the default value of none will create (and store) a random seed
+
+    environment_width = 50
+    environment_height = 50
+    team_size = 40
+    runs_to_average = 100
+    max_steps = 3000
+
+    EnvFactory = partial(NewVacuumEnvironment, width=environment_width, height=environment_height, config="random dirt")
+    envs = [EnvFactory() for i in range(runs_to_average)]
+
+    # Result lists for plotting should be a list of tuples
+    # Every tuple will be structured as follows:
+    # (sensor radius [int], ratio of roomba [double], completion times [list])
+    data = []
+
+    for sensor_radius in tqdm(range(sensor_radius_min, sensor_radius_max + 1), desc="Sensor radius iterator"):
+        for num_drones in tqdm(range(0, team_size), desc="Num drones iterator"):
+            num_roomba = team_size - num_drones
+            ratio_roomba = num_roomba / team_size
+            completion_times = []
+            for env in tqdm([EnvFactory() for i in range(runs_to_average)], desc="Runs to avg iterator"):
+                for n in range(num_roomba):
+                    env.add_object(NewGreedyAgentWithoutRangePerception(communication=True),
+                                location=(random.randrange(1, environment_width-2), random.randrange(1, environment_height-2))).id = team_size + n + 1
+
+                for n in range(num_drones):
+                    env.add_object(NewGreedyDrone(sensor_radius=sensor_radius, communication=True),
+                                 location=(random.randrange(1, environment_width-2), random.randrange(1, environment_width-2))).id = n + 1
+
+                env.run(max_steps)
+                completion_times.append(env.t)
+
+            data.append((sensor_radius, ratio_roomba, completion_times))
+
+        # After iterating over all teams, save current data
+        pickle.dump(data, open(f"test11_{environment_width}_{environment_height}_{team_size}_{runs_to_average}_{max_steps}_iter{sensor_radius}.p", "wb"))
+
+    # 3D Scatterplot
+    if showPlot:
+        fig = plt.figure()
+        ax = fig.add_subplot(111, projection='3d')
+        sensor_data = [tup[0] for tup in data]
+        ratio_data = [tup[1] for tup in data]
+        completion_data = [tup[2] for tup in data]
+        ax.scatter(sensor_data, ratio_data, [sum(completion_times) / runs_to_average for completion_times in completion_data], marker='o')
+        ax.set_title('%s x %s Environment of %s(), seed=%s, team size=%s, agent types=2, averaged over %s runs each' \
+                  % (environment_width, environment_height, inspect.stack()[0][3], seed, team_size, runs_to_average))
+        ax.set_xlabel('Sensor Radius')
+        ax.set_ylabel('Ratio of Roomba')
+        ax.set_zlabel('Average Completion Time')
+        plt.show()
+
+def test13(seed=None):
+    # set a seed to provide repeatable outcomes each run
+    set_seed(seed) # if the seed wasn't set in the input, the default value of none will create (and store) a random seed
+
+    e = NewVacuumEnvironment(width=20, height=20, config="random dirt")
+    ef = EnvFrame(e,root=tk.Tk(), cellwidth=30,
+                    title='Vacuum Robot Simulation - Scenario=%s(), Seed=%s' % (inspect.stack()[0][3],current_seed))
+
+    # Create agents
+    for i in range(10):
+        o = NewKMeansAgentWithNetworkComms(sensor_radius=5, comms_range=5)
+        e.add_object(o, location=(random.randrange(1,18), random.randrange(1,18))).id = i+1
+
+    ef.configure_display()
+    ef.run()
+    ef.mainloop()
+
+
+def test14(seed=None):
+    # set a seed to provide repeatable outcomes each run
+    set_seed(seed) # if the seed wasn't set in the input, the default value of none will create (and store) a random seed
+
+    repetitions = 10
+
+    width_max = 20
+    height_max = 20
+
+    EnvFactory = partial(NewVacuumEnvironment,width=width_max,height=height_max,config="random dirt")
+    envs = [EnvFactory() for i in range(repetitions)]
+    # Return the mean score of running an agent in each of the envs, for steps
+    results = []
+    num_agents = 10
+    comms_range = range(1,11,1)
+    sensor_range = range(1,11,1)
+    results = np.zeros((len(comms_range),len(sensor_range)))
+    for i, cr in enumerate(comms_range):
+        for j, sr in enumerate(sensor_range):
+            total = 0
+            steps = 1000
+            count = 0
+            for env in copy.deepcopy(envs):
+                count += 1
+                with Timer(name='Simulation Timer - Comms Range=%s - Sensor Range=%s - Environment=%s' % (cr, sr, count), format='%.4f'):
+                    for n in range(num_agents):
+                        o = NewKMeansAgentWithNetworkComms(sensor_radius=sr, comms_range=cr)
+                        env.add_object(o, location=(
+                            random.randrange(1, width_max - 2), random.randrange(1, width_max - 2))).id = n + 1
+
+                    env.run(steps)
+                    total += env.t
+            results[i,j] = float(total)/len(envs)
+
+    print(results)
+
+    X,Y = np.meshgrid(comms_range, sensor_range)
+    f = plt.figure()
+    ax = f.gca(projection = '3d')
+
+    surf = ax.plot_surface(X, Y, np.transpose(results), cmap=cm.coolwarm,
+                       linewidth=0, antialiased=False)
+
+
+
+    plt.title('scenario=%s(), seed=%s, (%sx%s) w/ %s roombas' % (inspect.stack()[0][3],current_seed, width_max, height_max, num_agents))
+    ax.set_xlabel('comms range')
+    ax.set_ylabel('sensor range')
+    ax.set_zlabel('time to clean')
+    plt.show()
+
+
+def test15(seed=None):
+    # set a seed to provide repeatable outcomes each run
+    set_seed(seed) # if the seed wasn't set in the input, the default value of none will create (and store) a random seed
+
+    repetitions = 10
+    width_max = 50
+    height_max = 50
+    num_agents = 10
+
+    EnvFactory = partial(NewVacuumEnvironment,width=width_max,height=height_max,config="random dirt")
+    envs = [EnvFactory() for i in range(repetitions)]
+    "Return the mean score of running an agent in each of the envs, for steps"
+    results = []
+    confidence_intervals = []
+    sr = 10
+    comms_range = range(10,51,2)
+    for cr in comms_range:
+        total = []
+        steps = 1000
+        i = 0
+        for env in copy.deepcopy(envs):
+            i+=1
+            with Timer(name='Simulation Timer - Comms Range=%s - Environment=%s' % (cr, i), format='%.4f'):
+                for n in range(num_agents):
+                    o = NewKMeansAgentWithNetworkComms(sensor_radius=sr, comms_range=cr)
+                    env.add_object(o, location=(random.randrange(1, width_max-2), random.randrange(1, width_max-2))).id = n + 1
+
+                env.run(steps)
+                total.append(env.t)
+        results.append(float(sum(total))/len(envs))
+        _, start, end = confidence_interval(total) # 95% CI by default
+        confidence_intervals.append((end-start) / 2)
+    plt.errorbar(comms_range,[r for r in results], yerr=confidence_intervals, label='95% confidence interval')
+    plt.title('scenario=%s(), seed=%s, sensor radius = %s, (%sx%s) w/ %s roombas' % (inspect.stack()[0][3],current_seed, sr, width_max, height_max, num_agents))
+    plt.xlabel('comms range')
+    plt.ylabel('time to fully clean')
+    plt.show()
+
+
+def test16(seed=None):
+    # set a seed to provide repeatable outcomes each run
+    set_seed(seed) # if the seed wasn't set in the input, the default value of none will create (and store) a random seed
+
+    kmeans = True  # change this to toggle between k-means and greedy agent behavior
+
+    e = NewVacuumEnvironment(width=50, height=50, config="corner dirt")
+    ef = EnvFrame(e,root=tk.Tk(), cellwidth=18,
+                    title='Vacuum Robot Simulation - Scenario=%s(), Seed=%s' % (inspect.stack()[0][3],current_seed))
+
+    # Create agents
+    i = 0
+    for (x,y) in [(14,14),(14,24),(24,14),(24,24)]:
+        i += 1
+        if kmeans:
+            o = NewKMeansAgentWithNetworkComms(sensor_radius=10, comms_range=30)
+        else:
+            o = NewGreedyAgentWithRangePerception(sensor_radius=100, communication=True)
+        e.add_object(o, location=(x,y)).id = i
+
+    e.add_object(Dirt(), location=(24,25))
+
+    ef.configure_display()
+    ef.run(pause=True)
+    ef.mainloop()
+
+
+def test17(seed=None, kmeans=True):
+    # set a seed to provide repeatable outcomes each run
+    set_seed(seed) # if the seed wasn't set in the input, the default value of none will create (and store) a random seed
+
+    e = NewVacuumEnvironment(width=50, height=50, config="empty")
+    ef = EnvFrame(e,root=tk.Tk(), cellwidth=15,
+                    title='Vacuum Robot Simulation - Scenario=%s(), Seed=%s' % (inspect.stack()[0][3],current_seed))
+
+    # Create agents
+    i = 0
+    for (x,y) in [(20,20),(20,21),(21,20),(21,21)]:
+        i += 1
+        if kmeans:
+            o = NewKMeansAgentWithNetworkComms(sensor_radius=100, comms_range=100)
+        else:
+            o = NewGreedyAgentWithRangePerception(sensor_radius=100, communication=True)
+        e.add_object(o, location=(x,y)).id = i
+
+    e.add_object(Dirt(), location=(1,1))
+    e.add_object(Dirt(), location=(44,1))
+    e.add_object(Dirt(), location=(1,48))
+    e.add_object(Dirt(), location=(48,48))
+
+    ef.configure_display()
+    ef.run(pause=True)
+    ef.mainloop()
+
+
+def test18(seed=None, kmeans=True):
+    # set a seed to provide repeatable outcomes each run
+    set_seed(seed) # if the seed wasn't set in the input, the default value of none will create (and store) a random seed
+
+    e = NewVacuumEnvironment(width=50, height=50, config="empty")
+    ef = EnvFrame(e,root=tk.Tk(), cellwidth=15,
+                    title='Vacuum Robot Simulation - Scenario=%s(), Seed=%s' % (inspect.stack()[0][3],current_seed))
+
+    # Create agents
+    i = 0
+    for (x,y) in [(20,20),(20,21),(21,20),(21,21)]:
+        i += 1
+        if kmeans:
+            o = NewKMeansAgentWithNetworkComms(sensor_radius=100, comms_range=100)
+        else:
+            o = NewGreedyAgentWithRangePerception(sensor_radius=100, communication=True)
+        e.add_object(o, location=(x,y)).id = i
+
+    # create the 'problem'
+    e.problem = Problem(e,n=50,type='acyclic')
+
+    for node in e.problem.graph:
+        d = Dirt(id=node)
+        e.add_object(d, location=(random.randrange(1,e.width-1), random.randrange(1,e.height-1)))
+
+    ef.configure_display()
+    ef.run(pause=False)
+    ef.mainloop()
+
+
+def test_all(seed=None):
+    test0(seed)
+    test1(seed)
+    test2(seed)
+    test3(seed)
+    test4(seed)
+    test5(seed)
+    test6(seed)
+    test7(seed)
+    test8(seed)
+    test9(seed)
+    test10(seed)
 
 def main():
-    # set a seed to provide repeatable outcomes each run
-    random.seed(0) # set seed to None to remove the seed and have different outcomes
+    #test4()
 
-    test1()
+    test7()
+
+    #test9()
+
+    #test13()
+
+    #test16()
+
+    #test17(seed=None, kmeans=True)
+
+    #test_all()
 
 if __name__ == "__main__":
     # execute only if run as a script
